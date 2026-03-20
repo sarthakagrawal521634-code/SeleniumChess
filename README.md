@@ -38,6 +38,7 @@ Features that differentiate this fork from the original Concept-Bytes project:
 
 ## 🤝 Contributing
 Contributions are welcome! If you have any new ideas to add or feedback to share, I'd love to hear it!
+Please read the [Contributing Guidelines](/CONTRIBUTING.md) before submitting a PR.
 
 ## 📄 License
 This project is based on [Open-Chess](https://github.com/Concept-Bytes/Open-Chess) by [Concept-Bytes](https://github.com/Concept-Bytes), which is licensed under the [MIT License](/LICENSE-MIT).
