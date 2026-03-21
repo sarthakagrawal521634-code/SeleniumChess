@@ -9,11 +9,20 @@ serves them with Content-Encoding: gzip.
 """
 
 from pathlib import Path
-import gzip
 import shutil
+import subprocess
 import sys
 
 Import("env")
+
+try:
+    import zopfli.gzip as zopfli_gzip
+except ImportError:
+    print("Installing zopfli package...")
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "zopfli", "-q"]
+    )
+    import zopfli.gzip as zopfli_gzip
 
 BUILD_DIR = Path("src/web/build")
 DATA_DIR = Path("data")
@@ -51,14 +60,16 @@ def prepare():
             out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(f, out)
         else:
-            # Gzip compress — ESPAsyncWebServer finds .gz automatically
+            # Zopfli compress - max gzip-compatible compression (brotli/zstd aren't accepted over HTTP)
             out = DATA_DIR / (clean_name + ".gz")
             out.parent.mkdir(parents=True, exist_ok=True)
             raw = f.read_bytes()
-            compressed = gzip.compress(raw, compresslevel=9, mtime=0)
-            # Force Unix OS byte (0x03) in gzip header for consistent
-            # output across platforms, avoids spurious git diffs.
-            compressed = compressed[:9] + b"\x03" + compressed[10:]
+            compressed = zopfli_gzip.compress(raw, numiterations=100)
+            # Force timestamp=0 and OS byte=0x03 (Unix) in gzip header for consistent output across platforms
+            compressed = (
+                compressed[:4] + b"\x00\x00\x00\x00" +
+                compressed[8:9] + b"\x03" + compressed[10:]
+            )
             out.write_bytes(compressed)
 
         count += 1
