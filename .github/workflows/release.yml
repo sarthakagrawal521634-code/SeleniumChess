@@ -51,8 +51,13 @@ jobs:
       - name: Create web assets TAR for OTA
         run: |
           cd data
-          # Create a tar archive of all web assets (for OTA web updates)
-          tar cf ../web_assets.tar *
+          # Create a tar archive of all web assets (for OTA web updates).
+          # If the data directory is empty, create an empty archive instead of failing.
+          if ls -1qA | grep -q .; then
+            tar cf ../web_assets.tar *
+          else
+            tar cf ../web_assets.tar --files-from=/dev/null
+          fi
           cd ..
           echo "Web assets TAR created:"
           ls -lh web_assets.tar
