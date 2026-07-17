@@ -47,12 +47,9 @@ def prepare_from(source_dir):
         if not f.is_file():
             continue
 
-        # Skip the build directory itself
-        try:
-            f.relative_to(BUILD_DIR)
+        # Skip build-script metadata when packaging from src/web/build/
+        if source_dir == BUILD_DIR and (f.name.startswith(".") or f.suffix == ".py"):
             continue
-        except ValueError:
-            pass
 
         ext = f.suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
