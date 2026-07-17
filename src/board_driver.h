@@ -37,7 +37,7 @@
 // Pin 14 (SER) GPIO = Serial data input
 #define SR_SER_DATA_PIN 33
 // Set to 1 if the shift register outputs drive PNP transistors
-#define SR_INVERT_OUTPUTS 0
+#define SR_INVERT_OUTPUTS 1
 
 // ---------------------------
 // Row and column pins don't need to be in any particular order, calibration will map them correctly
@@ -78,7 +78,6 @@ struct HardwareConfig {
 // ---------------------------
 #define SENSOR_READ_DELAY_MS 40
 #define DEBOUNCE_MS 125
-#define CALIBRATION_WARNING_INTERVAL_MS 4000
 
 // Animation job types for async queue
 enum class AnimationType : uint8_t { CAPTURE,
@@ -87,7 +86,16 @@ enum class AnimationType : uint8_t { CAPTURE,
                                      WAITING,
                                      THINKING,
                                      FIREWORK,
-                                     FLASH };
+                                     FLASH,
+                                     POWER,
+                                     CHECK_BEAM,
+                                     CHECKMATE };
+
+enum class EventPriority : uint8_t {
+  NORMAL = 0,
+  SUPERIOR = 1,
+  SPECIAL = 2,
+};
 
 // Animation job with parameters union for queue
 struct AnimationJob {
@@ -113,6 +121,14 @@ struct AnimationJob {
     struct {
       LedRGB color;
     } firework;
+    struct {
+      int attackerRow, attackerCol;
+      int kingRow, kingCol;
+    } checkBeam;
+    struct {
+      int winKingRow, winKingCol;
+      int loseKingRow, loseKingCol;
+    } checkmate;
   } params;
 };
 
@@ -129,6 +145,8 @@ class BoardDriver {
   static TaskHandle_t animationTaskHandle;
   static SemaphoreHandle_t ledMutex;
   static BoardDriver* instance;
+  static EventPriority animationPriority(AnimationType type);
+  static void enqueueAnimationJob(AnimationJob job);
   static void animationWorkerTask(void* param);
   void executeAnimation(const AnimationJob& job);
   void doCapture(int row, int col);
@@ -138,46 +156,32 @@ class BoardDriver {
   void doThinking(std::atomic<bool>* stopFlag);
   void doFirework(LedRGB color);
   void doFlash(LedRGB color, int times);
+  void doPower(bool turnOn);
+  void doCheckBeam(int attackerRow, int attackerCol, int kingRow, int kingCol);
+  void doCheckmate(int winKingRow, int winKingCol, int loseKingRow, int loseKingCol);
   bool sensorState[NUM_ROWS][NUM_COLS];
   bool sensorPrev[NUM_ROWS][NUM_COLS];
   bool sensorRaw[NUM_ROWS][NUM_COLS];
   unsigned long sensorDebounceTime[NUM_ROWS][NUM_COLS];
   int lastEnabledCol; // Tracks last enabled column for efficient sequential shifting
 
-  enum Axis {
-    RowsAxis = 0,
-    ColsAxis = 1,
-    UnknownAxis = 2,
-  };
   // LED settings (persisted in NVS)
   uint8_t brightness;                       // Global brightness 0-255
   uint8_t dimMultiplier;                    // Dark square dim factor 0-100 (stored as percentage)
   LedRGB currentColors[NUM_ROWS][NUM_COLS]; // Track current colors for dim multiplier updates
+  bool thinkingAlertMask[NUM_ROWS][NUM_COLS];
+  LedRGB thinkingColor;
+  bool thinkingTopHalf;
 
   // Runtime hardware pin configuration (persisted in NVS)
   HardwareConfig hwConfig;
 
-  // True while interactive calibration is running (guards concurrent web handler access)
-  std::atomic<bool> calibrating;
-  bool calibrated;
-
-  // Calibration data
-  uint8_t swapAxes;
-  uint8_t toLogicalRow[NUM_ROWS];
-  uint8_t toLogicalCol[NUM_COLS];
+  // LED index mapping (board row/col → LED strip pixel index)
   uint8_t ledIndexMap[NUM_ROWS][NUM_COLS];
 
-  bool loadCalibration();
-  void saveCalibration();
-  bool runCalibration();
   void loadLedSettings();
   void loadHardwareConfig();
   void readRawSensors(bool rawState[NUM_ROWS][NUM_COLS]);
-  bool waitForBoardEmpty(unsigned long stableMs = 500);
-  bool waitForSingleRawPress(int& rawRow, int& rawCol, unsigned long stableMs = 500);
-  void showCalibrationError();
-  bool calibrateAxis(Axis axis, uint8_t* axisPinsOrder, size_t NUM_PINS, bool firstAxisSwapped);
-  String axisToChessRankFile(Axis axis) const { return (axis == RowsAxis) ? "Rank" : ((axis == ColsAxis) ? "File" : "Unknown"); };
 
   void loadShiftRegister(byte data, int bits = 8);
   void disableAllCols();
@@ -187,7 +191,6 @@ class BoardDriver {
  public:
   BoardDriver();
   void beginHardware();
-  void checkCalibration();
   void readSensors();
   bool getSensorState(int row, int col);
   bool getSensorPrev(int row, int col);
@@ -199,18 +202,24 @@ class BoardDriver {
   void clearAllLEDs(bool show = true);
   void setSquareLED(int row, int col, LedRGB color);
   void showLEDs();
+  void setThinkingAlertMask(const bool mask[NUM_ROWS][NUM_COLS]);
+  void clearThinkingAlertMask();
 
   // Animation Functions (queued for async execution)
-  void fireworkAnimation(LedRGB color = LedColors::White);
+  void fireworkAnimation(LedRGB color = LedColors::GameStartEnd);
   void captureAnimation(int row, int col);
   void promotionAnimation(int row, int col);
   void blinkSquare(int row, int col, LedRGB color, int times = 3, bool clearAfter = true);
   void showConnectingAnimation();
   void flashBoardAnimation(LedRGB color, int times = 3);
+  void powerAnimation(bool turnOn);
+  void checkBeamAnimation(int attackerRow, int attackerCol, int kingRow, int kingCol);
+  void checkmateAnimation(int winKingRow, int winKingCol, int loseKingRow, int loseKingCol);
 
   // Start a cancellable animation. Returns a non-owning pointer to a stop flag.
   // Ownership: the animation task owns and deletes the flag after the animation loop exits.
   // Caller must ONLY call store(true) to signal stop, never delete the pointer.
+  void configureThinkingAnimation(LedRGB color, bool topHalf);
   std::atomic<bool>* startThinkingAnimation();
   std::atomic<bool>* startWaitingAnimation();
 
@@ -219,8 +228,10 @@ class BoardDriver {
   uint8_t getDimMultiplier() const { return dimMultiplier; }
   void setBrightness(uint8_t value);
   void setDimMultiplier(uint8_t value);
+  LedRGB getPaletteColor(const char* key) const;
+  bool setPaletteColor(const char* key, LedRGB color);
+  void resetPaletteDefaults();
   void saveLedSettings();
-  void triggerCalibration();
 
   // Hardware pin configuration (runtime, persisted in NVS)
   const HardwareConfig& getHardwareConfig() const { return hwConfig; }

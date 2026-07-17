@@ -105,6 +105,7 @@ class ChessEngine {
   // Game state checks
   bool findKingPosition(const char board[8][8], char kingColor, int& kingRow, int& kingCol) const;
   bool isKingInCheck(const char board[8][8], char kingColor);
+  bool findAttackingPiece(const char board[8][8], char kingColor, int& attackerRow, int& attackerCol);
   bool isPawnPromotion(char piece, int targetRow);
   bool hasAnyLegalMove(const char board[8][8], char color);
   bool isCheckmate(const char board[8][8], char kingColor);

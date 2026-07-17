@@ -1,971 +1,2695 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenChess Home</title>
+    <title>Selenium Chess</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" href="./css/styles.css">
+    <link rel="stylesheet" href="./css/chessboard-1.0.0.min.css">
+    <script src="./scripts/jquery-4.0.0.min.js"></script>
+    <script src="./scripts/chessboard-1.0.0.min.js"></script>
+    <script>var exports = {};</script>
+    <script src="./scripts/chess.js"></script>
 </head>
 
-<body>
-    <div class="container">
-        <h2>OpenChess Home</h2>
-        <!-- WiFi Settings Section -->
-        <div class="settings-section">
-            <div class="section-header" onclick="toggleSection('wifi')">
-                <span class="section-icon" id="wifi-icon">▶</span>
-                <h3>WiFi</h3>
-            </div>
-            <div class="section-content" id="wifi-content">
-                <div class="toggle-row toggle-row-divider">
-                    <div>
-                        <label class="toggle-label" for="scanAllChannels">Scan All WiFi Channels</label>
-                        <p class="toggle-description">
-                            Enable for mesh networks (+10s connection time)
-                        </p>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="scanAllChannels">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
+<body class="index-page">
 
-                <label style="margin-bottom: 5px;">Saved Networks</label>
-                <div class="network-list" id="savedNetworks">
-                    <div class="network-item" style="color: #888; text-align: center;">Loading...</div>
-                </div>
+    <!-- Audio elements for move sounds -->
+    <audio id="moveSound" src="./sounds/move.mp3" preload="auto"></audio>
+    <audio id="captureSound" src="./sounds/capture.mp3" preload="auto"></audio>
 
-                <label style="margin-top: 12px; margin-bottom: 5px;">Available Networks</label>
-                <div class="network-list" id="scannedNetworks">
-                    <div class="network-item" style="color: #888; text-align: center;">No scan results</div>
+    <!-- Game selector overlay -->
+    <div id="gameSelectorOverlay" class="settings-overlay">
+        <div class="settings-popup" style="width: 400px; max-height: 85vh;">
+            <h3>
+                <button id="deleteToggleBtn" class="game-lib-delete-toggle" title="Delete games">🗑</button>
+                <span>Game History</span>
+                <button class="settings-close-btn" id="closeGameSelector">×</button>
+            </h3>
+            <div class="pgn-section">
+                <button id="pgnToggleBtn" class="pgn-toggle-btn">📋 Import PGN</button>
+                <div id="pgnArea" class="pgn-area" style="display:none;">
+                    <textarea id="pgnInput" class="pgn-input" placeholder="Paste PGN notation here (e.g. from chess.com or lichess)..."></textarea>
+                    <button id="pgnLoadBtn" class="pgn-load-btn">Load Game</button>
                 </div>
-                <button type="button" id="scanBtn" class="button" style="background-color: #4CAF50; margin-top: 16px;">
-                    Scan for Networks
-                </button>
             </div>
+            <div id="gameGrid" class="game-selector-grid"></div>
+            <div id="deleteConfirmBar" class="delete-confirm-bar" style="display:none;">
+                <span id="deleteConfirmText">Delete selected games?</span>
+                <button id="deleteConfirmYes" class="delete-confirm-btn yes">Delete</button>
+                <button id="deleteConfirmNo" class="delete-confirm-btn no">Cancel</button>
+            </div>
+            <div id="noGamesMsg" style="display:none; text-align:center; color:#aaa; padding:20px;">No games found</div>
         </div>
-
-        <!-- Lichess Settings Section -->
-        <div class="settings-section">
-            <div class="section-header" onclick="toggleSection('lichess')">
-                <span class="section-icon" id="lichess-icon">▶</span>
-                <h3>Lichess</h3>
-            </div>
-            <div class="section-content" id="lichess-content">
-                <p class="section-description">
-                    Play Lichess games on your physical board.
-                    <a href="https://lichess.org/account/oauth/token" target="_blank" style="color: #ec8703;">
-                        Get your API token here
-                    </a>
-                </p>
-                <div class="lichess-status" id="lichess-status">
-                    <span id="lichess-token-status">No token configured</span>
-                </div>
-                <form id="lichessForm">
-                    <div class="form-group">
-                        <label for="lichessToken">API Token:</label>
-                        <input type="text" name="lichessToken" id="lichessToken" value=""
-                            placeholder="lip_xxxxxxxxxxxxx">
-                    </div>
-                    <input type="submit" style="background-color: #4CAF50;" value="Save Lichess Token">
-                </form>
-            </div>
-        </div>
-
-        <!-- Board Settings Section -->
-        <div class="settings-section">
-            <div class="section-header" onclick="toggleSection('board')">
-                <span class="section-icon" id="board-icon">▶</span>
-                <h3>LEDs & Board</h3>
-            </div>
-            <div class="section-content" id="board-content">
-                <p class="section-description">
-                    Adjust the LED brightness and dark square dimming for your chess board.
-                </p>
-                <form id="boardSettingsForm">
-                    <div class="form-group">
-                        <label for="brightness">LED Brightness: <span id="brightness-value"
-                                style="color: #ec8703;">255</span></label>
-                        <input type="range" id="brightness" name="brightness" min="10" max="255" value="255"
-                            class="slider-input">
-                    </div>
-                    <div class="form-group">
-                        <label for="dimMultiplier">Dark Square Dimming: <span id="dim-value"
-                                style="color: #ec8703;">70%</span></label>
-                        <input type="range" id="dimMultiplier" name="dimMultiplier" min="20" max="100" value="70"
-                            class="slider-input">
-                    </div>
-                    <input type="submit" style="background-color: #4CAF50;" value="Save LED Settings">
-                </form>
-                <div class="hr-divider"></div>
-                <p class="section-description" style="margin: 0;">
-                    Run board calibration to map LEDs and sensors to the correct squares.
-                </p>
-                <button type="button" id="calibrateBtn" class="button" style="background-color: #f44336;">
-                    Start Board Calibration
-                </button>
-
-            </div>
-        </div>
-
-        <!-- Hardware GPIO Configuration Section -->
-        <div class="settings-section">
-            <div class="section-header" onclick="toggleSection('hwconfig')">
-                <span class="section-icon" id="hwconfig-icon">▶</span>
-                <h3>GPIO</h3>
-            </div>
-            <div class="section-content" id="hwconfig-content">
-
-                <!-- Warning Banner -->
-                <div class="hw-warning-banner">
-                    <div class="hw-warning-title">⚡ Short Circuit Risk</div>
-                    <div class="hw-warning-text">
-                        Set the correct pins and transistor type (PNP/NPN)
-                        <span class="hw-before">BEFORE</span>
-                        connecting wires to GPIOs. Incorrect configuration with wires connected can cause short
-                        circuits.
-                    </div>
-                </div>
-
-                <form id="hwConfigForm">
-
-                    <!-- LED Strip + Shift Register merged card -->
-                    <div class="hw-section">
-                        <div class="hw-section-title-split">
-                            <span class="hw-section-title-split-sr">Shift Register</span>
-                            <span class="hw-section-title-split-led">LED Strip</span>
-                        </div>
-                        <div class="hw-section-body">
-                            <div class="hw-top-pins">
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-srClkPin">SRCLK</label>
-                                    <input type="number" id="hw-srClkPin" min="0" max="39"
-                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-srLatchPin">RCLK</label>
-                                    <input type="number" id="hw-srLatchPin" min="0" max="39"
-                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-srDataPin">SER</label>
-                                    <input type="number" id="hw-srDataPin" min="0" max="39"
-                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
-                                </div>
-                                <div class="hw-top-pins-divider"></div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-ledPin">DIN</label>
-                                    <input type="number" id="hw-ledPin" min="0" max="39"
-                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
-                                </div>
-                            </div>
-
-                            <div class="hr-divider"></div>
-
-                            <div class="hw-transistor-row">
-                                <div class="hw-transistor-info">
-                                    <label class="toggle-label">Transistor Type</label>
-                                    <p class="toggle-description">Invert Shift Register outputs for PNP</p>
-                                </div>
-                                <div class="hw-npn-pnp-toggle">
-                                    <span class="hw-transistor-label" id="hw-npn-label">NPN</span>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="hw-srInvert" onchange="updateTransistorLabels(this)">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                    <span class="hw-transistor-label" id="hw-pnp-label">PNP</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Row Inputs Section -->
-                    <div class="hw-section">
-                        <div class="hw-section-title">Row Inputs</div>
-                        <div class="hw-section-body">
-                            <div class="hw-row-pins">
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row0">Row 0</label>
-                                    <input type="number" id="hw-row0" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row1">Row 1</label>
-                                    <input type="number" id="hw-row1" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row2">Row 2</label>
-                                    <input type="number" id="hw-row2" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row3">Row 3</label>
-                                    <input type="number" id="hw-row3" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row4">Row 4</label>
-                                    <input type="number" id="hw-row4" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row5">Row 5</label>
-                                    <input type="number" id="hw-row5" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row6">Row 6</label>
-                                    <input type="number" id="hw-row6" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                                <div class="hw-field">
-                                    <label class="hw-field-label" for="hw-row7">Row 7</label>
-                                    <input type="number" id="hw-row7" min="0" max="39" class="hw-gpio-input"
-                                        placeholder="—">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <input type="submit" style="background-color: #4CAF50;" value="Save & Reboot">
-                </form>
-            </div>
-        </div>
-
-        <!-- OTA Updates Section -->
-        <div class="settings-section">
-            <div class="section-header" onclick="toggleSection('ota')">
-                <span class="section-icon" id="ota-icon">▶</span>
-                <h3>Updates</h3>
-            </div>
-            <div class="section-content" id="ota-content">
-                <div class="toggle-row toggle-row-divider">
-                    <div>
-                        <label class="toggle-label" for="autoOtaToggle">Automatic Updates</label>
-                        <p class="toggle-description">
-                            Install new versions automatically when available
-                        </p>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="autoOtaToggle">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-
-                <div class="ota-version-info" id="ota-version-info">
-                    <div class="ota-version-row">
-                        <span>Current version:</span>
-                        <strong id="current-version">loading...</strong>
-                    </div>
-                    <div class="ota-version-row">
-                        <span>Latest version:</span>
-                        <a id="latest-version" href="#" target="_blank">loading...</a>
-                    </div>
-                </div>
-
-                <div class="ota-manual-section">
-                    <p class="section-description" style="margin-bottom: 5px;">
-                        Manual update: drag & drop firmware (.bin) or web assets (.tar) files below.
-                    </p>
-                    <div class="ota-drop-zone" id="otaDropZone">
-                        <div class="ota-drop-icon">📦</div>
-                        <div class="ota-drop-text">Drop <strong>.bin</strong> (firmware) or <strong>.tar</strong> (web
-                            assets) here</div>
-                        <div class="ota-drop-subtext">or click to select a file</div>
-                        <input type="file" id="otaFileInput" accept=".bin,.tar" style="display:none;">
-                    </div>
-                    <div id="ota-upload-progress" class="ota-upload-progress" style="display:none;">
-                        <div class="ota-progress-bar">
-                            <div class="ota-progress-fill" id="otaProgressFill"></div>
-                        </div>
-                        <span id="ota-progress-text">Uploading...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Update Available Popup Overlay -->
-        <div class="update-overlay" id="updateOverlay">
-            <div class="update-popup">
-                <h3>Update Available</h3>
-                <p>A new version of OpenChess is available:</p>
-                <div class="update-popup-versions">
-                    <span>Current: <strong id="popup-current-version"></strong></span>
-                    <span class="update-arrow">→</span>
-                    <span>New: <a id="popup-new-version" href="#" target="_blank"></a></span>
-                </div>
-                <div class="update-popup-actions">
-                    <button type="button" id="updateNowBtn" class="button"
-                        style="background-color: #4CAF50; margin: 5px 0;">Update Now</button>
-                    <button type="button" id="updateLaterBtn" class="button"
-                        style="background-color: #666; margin: 5px 0;">Later</button>
-                </div>
-                <div id="update-popup-status" class="update-popup-status" style="display:none;"></div>
-            </div>
-        </div>
-
-        <!-- Custom Modal -->
-        <div class="modal-overlay" id="modalOverlay">
-            <div class="modal-box">
-                <p id="modalMessage"></p>
-                <input type="text" id="modalInput" style="display:none;" autocomplete="off">
-                <div class="modal-actions">
-                    <button type="button" id="modalOkBtn" class="button"
-                        style="background-color: #4CAF50; margin: 5px 0;">Confirm</button>
-                    <button type="button" id="modalCancelBtn" class="button"
-                        style="background-color: #666; margin: 5px 0;">Cancel</button>
-                </div>
-            </div>
-        </div>
-
-        <a href="./game.html" class="button">GameMode Selection</a>
-        <a href="./board.html" class="button">View Board</a>
     </div>
-    <script>
-        // Custom modal dialogs
-        var _modalResolve = null;
-        function _showModal(message, type, placeholder) {
-            var overlay = document.getElementById('modalOverlay');
-            var msgEl = document.getElementById('modalMessage');
-            var inputEl = document.getElementById('modalInput');
-            var cancelBtn = document.getElementById('modalCancelBtn');
-            msgEl.textContent = message;
-            if (type === 'prompt') {
-                inputEl.style.display = '';
-                inputEl.value = '';
-                inputEl.placeholder = placeholder || '';
-            } else {
-                inputEl.style.display = 'none';
-            }
-            cancelBtn.style.display = (type === 'alert') ? 'none' : '';
-            overlay.classList.add('visible');
-            if (type === 'prompt') setTimeout(function () { inputEl.focus(); }, 100);
-            return new Promise(function (resolve) { _modalResolve = resolve; });
-        }
-        function _closeModal(result) {
-            document.getElementById('modalOverlay').classList.remove('visible');
-            if (_modalResolve) { var r = _modalResolve; _modalResolve = null; r(result); }
-        }
-        document.getElementById('modalOkBtn').addEventListener('click', function () {
-            var inputEl = document.getElementById('modalInput');
-            _closeModal(inputEl.style.display !== 'none' ? inputEl.value : true);
-        });
-        document.getElementById('modalCancelBtn').addEventListener('click', function () {
-            var inputEl = document.getElementById('modalInput');
-            _closeModal(inputEl.style.display !== 'none' ? null : false);
-        });
-        document.getElementById('modalInput').addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') document.getElementById('modalOkBtn').click();
-        });
-        function showAlert(msg) { return _showModal(msg, 'alert'); }
-        function showConfirm(msg) { return _showModal(msg, 'confirm'); }
-        function showPrompt(msg, placeholder) { return _showModal(msg, 'prompt', placeholder); }
 
-        // Section toggle state
-        const sectionStates = {
-            wifi: false,
-            lichess: false,
-            board: false,
-            hwconfig: false,
-            ota: false
+    <!-- Promotion overlay -->
+    <div id="promotionOverlay" class="settings-overlay">
+        <div class="promotion-popup">
+            <h3>Promote Pawn</h3>
+            <div class="promotion-pieces" id="promotionPieces"></div>
+        </div>
+    </div>
+
+    <!-- Board settings popup overlay -->
+    <div id="boardSettingsPopup" class="settings-overlay">
+        <div class="settings-popup">
+            <h3>
+                <span>⚙️ Board Settings</span>
+                <button class="settings-close-btn" id="closeBoardSettings">×</button>
+            </h3>
+            <div class="settings-group">
+                <label>Display</label>
+                <div class="settings-row">
+                    <span>Show board notation</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingNotation" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <span>Flip board</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingFlip">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Sound</label>
+                <div class="settings-row">
+                    <span>Play move sounds</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingSound" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Board Colors</label>
+                <div class="color-picker-group">
+                    <div class="color-picker-item">
+                        <input type="color" id="settingLightColor" value="#f0d9b5">
+                        <span>Light</span>
+                    </div>
+                    <div class="color-picker-item">
+                        <input type="color" id="settingDarkColor" value="#0ABAB5">
+                        <span>Dark</span>
+                    </div>
+                    <button id="resetColorsBtn" class="fen-btn" title="Reset to default">↻</button>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Piece Theme</label>
+                <div class="piece-theme-row">
+                    <select id="settingPieceTheme"></select>
+                    <button id="addThemeBtn" class="fen-btn" title="Add custom theme">+</button>
+                    <button id="deleteThemeBtn" class="fen-btn" title="Delete custom theme" style="display:none;">−</button>
+                </div>
+                <a id="themeUrlDisplay" class="theme-url-display" href="#" target="_blank"></a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Navigation Tab Bar ── -->
+    <nav class="tab-bar" id="mainTabBar" role="navigation" aria-label="Main navigation">
+        <button class="tab-btn active" data-tab="home" aria-label="Home">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+            </span>
+            <span class="tab-label">Home</span>
+        </button>
+        <button class="tab-btn" data-tab="network" aria-label="Network">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M1 9l2 2c5.523-5.523 14.477-5.523 20 0l2-2C16.477 4.477 7.523 4.477 1 9zm8 8l3 3 3-3c-1.657-1.657-4.343-1.657-6 0zm-4-4l2 2c2.762-2.761 7.238-2.761 10 0l2-2C15.238 9.238 8.762 9.238 5 13z"/>
+                </svg>
+            </span>
+            <span class="tab-label">Network</span>
+        </button>
+        <button class="tab-btn" data-tab="board" aria-label="Board status">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <rect x="2" y="2" width="5" height="5"/><rect x="12" y="2" width="5" height="5"/>
+                    <rect x="7" y="7" width="5" height="5"/><rect x="17" y="7" width="5" height="5"/>
+                    <rect x="2" y="12" width="5" height="5"/><rect x="12" y="12" width="5" height="5"/>
+                    <rect x="7" y="17" width="5" height="5"/><rect x="17" y="17" width="5" height="5"/>
+                </svg>
+            </span>
+            <span class="tab-label">Board</span>
+            <span class="tab-dot" id="boardTabDot" style="display:none;" aria-hidden="true"></span>
+        </button>
+        <button class="tab-btn" data-tab="settings" aria-label="Settings">
+            <span class="tab-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+            </span>
+            <span class="tab-label">Settings</span>
+        </button>
+    </nav>
+
+    <!-- Sidebar brand (desktop only) -->
+    <div class="sidebar-brand" aria-hidden="true">
+        <img src="./favicon.svg" class="sidebar-logo" alt="">
+        <span class="sidebar-name">Selenium Chess</span>
+    </div>
+
+    <!-- ── Main layout wrapper ── -->
+    <div class="app-layout">
+
+        <!-- ════════════════════════════════ HOME TAB ════════════════════════════════ -->
+        <section id="tab-home" class="tab-content active">
+            <div class="container">
+
+                <!-- Brand hero -->
+                <header class="brand-hero">
+                    <div class="brand-identity">
+                        <img src="./favicon.svg" class="brand-logo" alt="Selenium Chess">
+                        <h1 class="brand-name">Selenium Chess</h1>
+                    </div>
+                    <h2 class="brand-tagline">Smart Chess, Redefined</h2>
+                    <p class="brand-description">Your physical board meets digital intelligence — play over-the-board, challenge AI, or sync online seamlessly.</p>
+                    <div class="status-pills">
+                        <div class="status-pill"><span id="wifiDot" class="status-dot offline"></span><span id="wifiState">WiFi offline</span></div>
+                        <div class="status-pill"><span id="bleDot" class="status-dot waiting"></span><span id="bleState">Bluetooth waiting</span></div>
+                        <div class="status-pill"><span class="status-dot ready"></span><span>Web UI live</span></div>
+                    </div>
+                </header>
+
+                <div class="section-heading">
+                    <div>
+                        <h3>Game Modes</h3>
+                        <p>Select from 4 available game modes.</p>
+                    </div>
+                    <a href="javascript:void(0)" onclick="showTab('board');openGameSelector();" class="section-action-link">Game History →</a>
+                </div>
+
+                <div class="game-mode-grid">
+                    <div class="game-mode-card mode-hvh" id="hvhCardTrigger" onclick="toggleHvhSetup(event)" role="button" tabindex="0">
+                        <span class="game-card-icon">♟</span>
+                        <div class="game-card-info"><h4>Human vs Human</h4><p>Pure over-the-board play between two players.</p></div>
+                        <span class="bot-toggle-arrow" id="hvhArrow" aria-hidden="true">▸</span>
+                    </div>
+                    <div class="game-mode-card mode-bot" id="botCardTrigger" onclick="toggleBotSetup(event)" role="button" tabindex="0">
+                        <span class="game-card-icon">♞</span>
+                        <div class="game-card-info"><h4>Stockfish</h4><p>Play one of the most advanced chess bots — Stockfish — 4 difficulty levels.</p></div>
+                        <span class="bot-toggle-arrow" id="botArrow" aria-hidden="true">▸</span>
+                    </div>
+                    <div class="game-mode-card mode-online" onclick="selectGameMode(3)" role="button" tabindex="0">
+                        <span class="game-card-icon"><svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26"><path d="M1 9l2 2c5.523-5.523 14.477-5.523 20 0l2-2C16.477 4.477 7.523 4.477 1 9zm8 8l3 3 3-3c-1.657-1.657-4.343-1.657-6 0zm-4-4l2 2c2.762-2.761 7.238-2.761 10 0l2-2C15.238 9.238 8.762 9.238 5 13z"/></svg></span>
+                        <div class="game-card-info"><h4>Online Play</h4><p>Lichess bridge — physical board synced online.</p></div>
+                    </div>
+                    <div class="game-mode-card mode-sensor" onclick="selectGameMode(4)" role="button" tabindex="0">
+                        <span class="game-card-icon">⊞</span>
+                        <div class="game-card-info"><h4>Sensor Test</h4><p>Hardware matrix check — verify all 64 squares.</p></div>
+                    </div>
+                </div>
+
+                <!-- Bot setup collapsible -->
+                <div class="bot-setup-panel" id="botSetupPanel" aria-hidden="true">
+                    <div class="bot-setup-content">
+                        <h4>Bot Match Setup</h4>
+                        <p>Configure your match before launching.</p>
+                        <div class="option-stack">
+                            <label>Your Color</label>
+                            <div class="toggle-group" id="playerColorGroup">
+                                <button class="toggle-btn active" data-value="white">White</button>
+                                <button class="toggle-btn" data-value="black">Black</button>
+                            </div>
+                        </div>
+                        <div class="option-stack">
+                            <label>Difficulty</label>
+                            <div class="toggle-group" id="difficultyGroup">
+                                <button class="toggle-btn" data-value="1">Easy</button>
+                                <button class="toggle-btn active" data-value="2">Medium</button>
+                                <button class="toggle-btn" data-value="3">Hard</button>
+                                <button class="toggle-btn" data-value="4">Expert</button>
+                            </div>
+                        </div>
+                        <button class="button" onclick="selectGameMode(2)" style="margin-top:18px; margin-bottom:0;">Start Bot Game</button>
+                    </div>
+                </div>
+
+                <!-- HvH setup collapsible -->
+                <div class="bot-setup-panel" id="hvhSetupPanel" aria-hidden="true">
+                    <div class="bot-setup-content">
+                        <h4>Human vs Human Setup</h4>
+                        <p>Configure time controls.</p>
+                        <div class="option-stack">
+                            <label>Time Control</label>
+                            <div class="toggle-group" id="timeControlGroup">
+                                <button class="toggle-btn active" data-value="off">Off</button>
+                                <button class="toggle-btn" data-value="on">On</button>
+                            </div>
+                        </div>
+                        <div id="timePresetsSection" style="display:none;">
+                            <div class="option-stack">
+                                <label>Bullet</label>
+                                <div class="toggle-group" id="bulletGroup">
+                                    <button class="toggle-btn time-preset" data-value="1+0">1+0</button>
+                                    <button class="toggle-btn time-preset" data-value="1+1">1+1</button>
+                                    <button class="toggle-btn time-preset" data-value="2+1">2+1</button>
+                                </div>
+                            </div>
+                            <div class="option-stack">
+                                <label>Blitz</label>
+                                <div class="toggle-group" id="blitzGroup">
+                                    <button class="toggle-btn time-preset active" data-value="3+0">3+0</button>
+                                    <button class="toggle-btn time-preset" data-value="3+2">3+2</button>
+                                    <button class="toggle-btn time-preset" data-value="5+0">5+0</button>
+                                    <button class="toggle-btn time-preset" data-value="5+3">5+3</button>
+                                </div>
+                            </div>
+                            <div class="option-stack">
+                                <label>Rapid</label>
+                                <div class="toggle-group" id="rapidGroup">
+                                    <button class="toggle-btn time-preset" data-value="10+0">10+0</button>
+                                    <button class="toggle-btn time-preset" data-value="15+10">15+10</button>
+                                    <button class="toggle-btn time-preset" data-value="30+0">30+0</button>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="button" onclick="selectGameMode(1)" style="margin-top:18px; margin-bottom:0;">Start Game</button>
+                    </div>
+                </div>
+
+                <div id="playStatus" class="page-status" style="display:none;"></div>
+
+            </div>
+
+        </section>
+
+        <!-- ════════════════════════════════ NETWORK TAB ════════════════════════════════ -->
+        <section id="tab-network" class="tab-content">
+            <div class="container">
+                <div class="tab-page-header">
+                    <h2 class="tab-page-title">Network</h2>
+                    <p class="tab-page-desc">Manage WiFi profiles, scan nearby networks, and monitor connection state.</p>
+                </div>
+                <div class="card-stack">
+                    <div class="dashboard-card">
+                        <div class="section-heading" style="margin-top:0;">
+                            <div>
+                                <h3>WiFi Control</h3>
+                                <p>Scan, join, and manage saved profiles.</p>
+                            </div>
+                            <div class="toolbar-row">
+                                <button class="fen-btn" onclick="scanNetworks()" title="Scan for networks">↻</button>
+                            </div>
+                        </div>
+                        <div class="settings-row" style="margin-bottom:14px;">
+                            <span>All channels scan</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="scanAllChannelsToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="section-heading"><div><h3>Saved Networks</h3><p>Previously connected profiles.</p></div></div>
+                        <div id="savedNetworks" class="list-shell"></div>
+                        <div class="section-heading"><div><h3>Nearby Networks</h3><p>Discovered in the last scan.</p></div></div>
+                        <div id="scannedNetworks" class="list-shell"></div>
+                        <div class="section-heading">
+                            <div>
+                                <h3>Manual Join</h3>
+                                <p>Connect to a hidden or unlisted network.</p>
+                            </div>
+                        </div>
+                        <div class="inline-form two-col">
+                            <input id="manualSsid" type="text" placeholder="Network name (SSID)">
+                            <input id="manualPassword" type="password" placeholder="Password">
+                        </div>
+                        <div class="toolbar-row" style="margin-top:10px;">
+                            <button class="button" onclick="connectManual()" style="margin:0;">Join Network</button>
+                        </div>
+                        <div class="page-status" id="wifiStatus">Loading WiFi status…</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════════════════════════════ BOARD TAB ════════════════════════════════ -->
+        <section id="tab-board" class="tab-content">
+            <div class="board-layout">
+                <div class="board-main-col">
+
+                    <!-- ─── Top Navigation Bar ─── -->
+                    <div class="board-header">
+                        <button id="boardHomeBtn" class="bh-btn" title="Home" onclick="goHome()">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+                        </button>
+                        <div class="bh-status" id="boardModeBanner">No Active Game</div>
+                        <div class="bh-actions">
+                            <button id="gameSelectorBtn" class="bh-btn" title="Game History">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+                            </button>
+                            <button id="flipBtn" class="bh-btn" title="Flip Board">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/></svg>
+                            </button>
+                            <button id="boardSettingsBtn" class="bh-btn" title="Settings">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ─── Player 1 Panel (Top / Opponent) ─── -->
+                    <div class="player-bar" id="playerBarTop">
+                        <div class="player-info">
+                            <span class="player-name" id="playerNameTop">–</span>
+                            <span class="player-dead-pieces" id="playerDeadTop"></span>
+                            <span class="player-adv" id="playerAdvTop"></span>
+                        </div>
+                        <div class="player-clock" id="clockTop">--:--</div>
+                    </div>
+
+                    <!-- ─── Board + Eval Bar ─── -->
+                    <div class="board-area">
+                        <div class="eval-bar-wrap" id="evalBarWrap" style="display:none;">
+                            <span class="eval-label-top" id="evalLabelTop"></span>
+                            <div class="eval-bar-track">
+                                <div class="eval-bar-white" id="evalBarWhite" style="height:50%"></div>
+                            </div>
+                            <span class="eval-label-bot" id="evalLabelBot"></span>
+                        </div>
+                        <div class="board-wrapper">
+                            <div id="board" class="chessboard-container"></div>
+                        </div>
+                    </div>
+
+                    <!-- ─── Player 2 Panel (Bottom / User) ─── -->
+                    <div class="player-bar" id="playerBarBottom">
+                        <div class="player-info">
+                            <span class="player-name" id="playerNameBottom">–</span>
+                            <span class="player-dead-pieces" id="playerDeadBottom"></span>
+                            <span class="player-adv" id="playerAdvBottom"></span>
+                        </div>
+                        <div class="player-clock" id="clockBottom">--:--</div>
+                    </div>
+
+                    <!-- ─── Bottom Control Bar ─── -->
+                    <div class="board-footer">
+                        <button class="bf-nav-btn" onclick="navFirst()" title="First move">⏮</button>
+                        <button class="bf-nav-btn" onclick="navPrev()" title="Previous move">◀</button>
+                        <div class="bf-moves-wrap">
+                            <div id="moveScroller" class="bf-moves">
+                                <span class="bf-moves-empty">No moves yet</span>
+                            </div>
+                        </div>
+                        <button class="bf-nav-btn" onclick="navNext()" title="Next move">▶</button>
+                        <button class="bf-nav-btn" onclick="navLast()" title="Last move">⏭</button>
+                        <!-- Active game actions -->
+                        <div class="bf-game-actions" id="liveGameActions">
+                            <button id="drawBtn" class="bf-action-btn bf-draw" title="Offer draw">½ Draw</button>
+                            <button id="resignBtn" class="bf-action-btn bf-resign" title="Resign">⚐ Resign</button>
+                        </div>
+                        <!-- Review mode action -->
+                        <div class="bf-game-actions" id="reviewGameActions" style="display:none;">
+                            <button id="gameReviewBtn" class="bf-action-btn bf-review" title="Game Review">★ Review</button>
+                        </div>
+                    </div>
+
+                </div><!-- /board-main-col -->
+
+                <!-- ─── Game Review Analytics Panel (below board on mobile, beside on desktop) ─── -->
+                <div class="board-side-col" id="reviewSideCol" style="display:none;">
+
+                    <!-- A. Evaluation Graph -->
+                    <div class="rv-eval-graph">
+                        <canvas id="evalGraph" width="400" height="100"></canvas>
+                        <div class="eval-graph-tooltip" id="evalGraphTooltip" style="display:none;"></div>
+                    </div>
+
+                    <!-- B. Review Header & Accuracy -->
+                    <div class="rv-header">
+                        <div class="rv-title-row">
+                            <h3 class="rv-title">Game Review</h3>
+                            <span class="rv-opening-tag" id="openingName" style="display:none;"></span>
+                        </div>
+                        <div id="reviewMeta"></div>
+                        <div class="rv-accuracy-row">
+                            <div class="rv-accuracy-box rv-white">
+                                <span class="rv-acc-value" id="accWhite">–</span>
+                                <span class="rv-acc-label">White Accuracy</span>
+                            </div>
+                            <div class="rv-accuracy-box rv-black">
+                                <span class="rv-acc-value" id="accBlack">–</span>
+                                <span class="rv-acc-label">Black Accuracy</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- C. Move Classification Table -->
+                    <div class="rv-classifications">
+                        <div class="rv-class-row rv-class-header"><span class="rv-w-count">W</span><span class="rv-class-label">Classification</span><span class="rv-b-count">B</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-brilliant">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-brilliant">!!</span> Brilliant</span><span class="rv-b-count" id="clB-brilliant">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-great">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-great">!</span> Great Move</span><span class="rv-b-count" id="clB-great">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-book">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-book">&#9830;</span> Book</span><span class="rv-b-count" id="clB-book">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-best">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-best">&#9733;</span> Best</span><span class="rv-b-count" id="clB-best">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-excellent">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-excellent">&#10003;</span> Excellent</span><span class="rv-b-count" id="clB-excellent">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-good">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-good">&#10003;</span> Good</span><span class="rv-b-count" id="clB-good">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-inaccuracy">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-inaccuracy">?!</span> Inaccuracy</span><span class="rv-b-count" id="clB-inaccuracy">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-mistake">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-mistake">?</span> Mistake</span><span class="rv-b-count" id="clB-mistake">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-miss">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-miss">&#10007;</span> Miss</span><span class="rv-b-count" id="clB-miss">0</span></div>
+                        <div class="rv-class-row"><span class="rv-w-count" id="clW-blunder">0</span><span class="rv-class-label"><span class="rv-dot rv-dot-blunder">??</span> Blunder</span><span class="rv-b-count" id="clB-blunder">0</span></div>
+                    </div>
+
+                    <!-- D. Best Move Display -->
+                    <div class="rv-best-move" id="bestMoveInfo" style="display:none;">
+                        <div class="rv-move-summary-head">
+                            <span class="rv-move-badge" id="currentMoveBadge">Review</span>
+                            <span class="rv-move-summary" id="currentMoveText"></span>
+                            <span class="rv-move-score" id="currentMoveEval"></span>
+                        </div>
+                        <div class="rv-bestline" id="bestMoveText"></div>
+                    </div>
+
+                    <!-- E. Key Moments -->
+                    <div class="rv-key-moments" id="keyMomentsWrap">
+                        <div class="rv-section-label">Key Moments</div>
+                        <div id="keyMoments"></div>
+                    </div>
+
+                    <!-- G. Start Review / Re-analyze CTA -->
+                    <button id="analyzeBtn" class="rv-start-btn">&#9733; Start Review</button>
+                    <div class="analyze-progress" id="analyzeProgress" style="display:none;">
+                        <div class="analyze-progress-bar"><div class="analyze-progress-fill" id="analyzeProgressFill"></div></div>
+                        <span id="analyzeProgressText">Analyzing...</span>
+                    </div>
+
+                    <!-- Exit review -->
+                    <button id="exitReviewBtn" class="rv-exit-btn" style="display:none;">&#10005; Exit Review</button>
+
+                    <!-- PGN moves (review mode detailed view) -->
+                    <div class="rv-moves-panel" id="reviewMovesPanel" style="display:none;">
+                        <div class="review-moves" id="reviewMoves"></div>
+                    </div>
+
+                </div><!-- /board-side-col -->
+
+            </div>
+        </section>
+
+        <!-- ════════════════════════════════ SETTINGS TAB ════════════════════════════════ -->
+        <section id="tab-settings" class="tab-content">
+            <div class="container">
+                <div class="tab-page-header">
+                    <h2 class="tab-page-title">Settings</h2>
+                    <p class="tab-page-desc">LED lighting, firmware updates, hardware diagnostics, and system logs.</p>
+                </div>
+                <div class="card-stack">
+
+                    <div class="dashboard-card">
+                        <div class="section-heading" style="margin-top:0;">
+                            <div><h3>LED Lighting</h3><p>Control brightness and dim level of the board LED strip.</p></div>
+                        </div>
+                        <div class="settings-row" style="margin-bottom:14px;">
+                            <span>Show valid move LEDs</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="showMovesToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="metric-grid" style="margin-bottom:16px;">
+                            <div class="metric-tile"><div class="metric-label">Brightness</div><div class="metric-value" id="brightnessValue">—</div></div>
+                            <div class="metric-tile"><div class="metric-label">Dim Level</div><div class="metric-value" id="dimValue">—</div></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="brightnessSlider">Brightness</label>
+                            <input class="slider-input" id="brightnessSlider" type="range" min="0" max="255" value="80">
+                        </div>
+                        <div class="form-group">
+                            <label for="dimSlider">Dim Multiplier</label>
+                            <input class="slider-input" id="dimSlider" type="range" min="0" max="100" value="35">
+                        </div>
+                        <div class="settings-group" style="margin-top:10px;">
+                            <label>Piece Colors</label>
+                            <div class="color-picker-group">
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorPlayerWhite" value="#ffffff">
+                                    <span>White</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorPlayerBlack" value="#4b5c09">
+                                    <span>Black</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-group" style="margin-top:10px;">
+                            <label>Mode Colors</label>
+                            <div class="color-picker-group">
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorModeHuman" value="#00f0ff">
+                                    <span>Human</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorModeOnline" value="#ff1111">
+                                    <span>Online</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorModeSensor" value="#008000">
+                                    <span>Sensor</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorModeStockfish" value="#fdd808">
+                                    <span>Stockfish</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-group" style="margin-top:10px;">
+                            <label>Animation Colors</label>
+                            <div class="color-picker-group">
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorGameStartEnd" value="#520075">
+                                    <span>Start / End</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorConfirm" value="#00f0ff">
+                                    <span>Confirm</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCapture" value="#520075">
+                                    <span>Capture</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCheck" value="#ec5800">
+                                    <span>Check</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCheckSharpRed" value="#ff0404">
+                                    <span>Check Red</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorError" value="#ff1111">
+                                    <span>Error</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorDraw" value="#00f0ff">
+                                    <span>Draw</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorPowerCyan" value="#00f0ff">
+                                    <span>Power</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-group" style="margin-top:10px;">
+                            <label>Checkmate Colors</label>
+                            <div class="color-picker-group">
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCheckmateWave" value="#fdd808">
+                                    <span>Wave</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCheckmateWin" value="#008000">
+                                    <span>Winner</span>
+                                </div>
+                                <div class="color-picker-item">
+                                    <input type="color" id="ledColorCheckmateLose" value="#ff1111">
+                                    <span>Loser</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="toolbar-row" style="margin-top:8px;">
+                            <button class="button" onclick="saveLedSettings()" style="margin:0;">Save Lighting</button>
+                            <button class="fen-btn" onclick="resetLedColors()" title="Reset LED colors">↻</button>
+                        </div>
+                        <div class="page-status" id="ledStatus">Loading…</div>
+                    </div>
+
+                    <div class="dashboard-card">
+                        <div class="section-heading" style="margin-top:0;">
+                            <div><h3>Firmware Updates</h3><p>Over-the-air firmware management.</p></div>
+                        </div>
+                        <div class="settings-row" style="margin-bottom:14px;">
+                            <span>Auto update</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autoUpdateToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="metric-grid">
+                            <div class="metric-tile"><div class="metric-label">Current</div><div class="metric-value" id="firmwareVersion">--</div></div>
+                            <div class="metric-tile"><div class="metric-label">Latest</div><div class="metric-value" id="latestVersion">--</div></div>
+                            <div class="metric-tile"><div class="metric-label">Status</div><div class="metric-value" id="updateState">--</div></div>
+                        </div>
+                        <div class="toolbar-row" style="margin-top:12px;">
+                            <button class="button" id="applyUpdateBtn" onclick="applyUpdate()" style="margin:0;">Apply Update</button>
+                        </div>
+                        <div class="page-status" id="otaStatus">Checking update status…</div>
+                    </div>
+
+                    <div class="dashboard-card">
+                        <div class="section-heading" style="margin-top:0;">
+                            <div><h3>Hardware Map</h3><p>Current runtime GPIO pin configuration.</p></div>
+                        </div>
+                        <div id="hardwareSummary" class="list-shell"></div>
+                    </div>
+
+                    <div class="dashboard-card">
+                        <div class="section-heading" style="margin-top:0;">
+                            <div><h3>System Logs</h3><p>Recent diagnostic output from the ESP32.</p></div>
+                            <div class="toolbar-row">
+                                <button class="fen-btn" onclick="refreshLogs()" title="Refresh logs">↻</button>
+                                <button class="fen-btn" onclick="clearLogs()" title="Clear logs">✕</button>
+                            </div>
+                        </div>
+                        <div id="logsContainer" class="logs-shell">(no logs)</div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+    </div><!-- /.app-layout -->
+
+    <!-- ── Footer (always visible) ── -->
+    <footer class="app-footer">
+        <span>© Selenium Chess 2026</span>
+    </footer>
+
+    <script>
+        /* ═══════════ Index State ═══════════ */
+        let selectedPlayerColor = 'white';
+        let selectedDifficulty = '2';
+        let botSetupOpen = false;
+        let hvhSetupOpen = false;
+        let hvhTimeEnabled = false;
+        let hvhTimeMinutes = 3;
+        let hvhTimeIncrement = 0;
+
+        /* ═══════════ Board State ═══════════ */
+        const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const START_POSITION = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+        let board = null;
+        let boardInitialized = false;
+        let currentTurn = 'w';
+        let previousValidFen = START_POSITION;
+        let updateInterval = null;
+        let boardOrientation = 'white';
+        let previousPosition = null;
+        let liveSegments = [];
+        let moveIndex = 0;
+        let totalMoves = 0;
+        let isLive = true;
+        let liveGameLoaded = false;
+        let reviewMode = false;
+        let reviewSegments = [];
+        let reviewMoveIndex = 0;
+        let reviewTotalMoves = 0;
+        let reviewGameMeta = null;
+        let currentDisplayedFen = START_FEN;
+        let currentMode = 0;
+        let lastBoardData = {};
+        let reviewAnalysis = {};
+        let isAnalyzing = false;
+        let analyzeController = null;
+        let promotionPending = false;
+        let promotionCooldownUntil = 0;
+
+        let boardSettings = {
+            showNotation: true,
+            playSound: true,
+            lightSquareColor: '#f0d9b5',
+            darkSquareColor: '#0ABAB5',
+            pieceTheme: './pieces/{piece}.svg',
+            customThemes: []
         };
 
-        function toggleSection(name) {
-            // Close all other sections
-            for (const key in sectionStates) {
-                if (key !== name && sectionStates[key]) {
-                    sectionStates[key] = false;
-                    document.getElementById(key + '-content').classList.remove('expanded');
-                    document.getElementById(key + '-icon').textContent = '▶';
-                }
-            }
+        const PIECE_SYMBOLS = { P:'♙', N:'♘', B:'♗', R:'♖', Q:'♕', p:'♟', n:'♞', b:'♝', r:'♜', q:'♛' };
+        const MODE_NAMES = { 0: 'Idle', 1: 'Human vs Human', 2: 'Stockfish', 3: 'Online Play', 4: 'Sensor Test' };
+        const RESULT_NAMES = ['In Progress', 'Checkmate', 'Stalemate', 'Draw (50-move)', 'Draw (3-fold)', 'Draw (agreement)', 'Draw (insufficient material)', 'Resignation', 'Timeout'];
+        const DEPTH_NAMES = { 5: 'Easy', 8: 'Medium', 11: 'Hard', 15: 'Expert' };
+        const GAME_HEADER_SIZE = 16;
+        const FEN_MARKER = 0xFFFF;
 
-            // Toggle current section
-            sectionStates[name] = !sectionStates[name];
-            const content = document.getElementById(name + '-content');
-            const icon = document.getElementById(name + '-icon');
+        /* ═══════════ Utilities ═══════════ */
+        function setStatusDot(id, stateClass, text) {
+            const dot = document.getElementById(id + 'Dot');
+            const lbl = document.getElementById(id + 'State');
+            if (dot) dot.className = 'status-dot ' + stateClass;
+            if (lbl) lbl.textContent = text;
+        }
 
-            if (sectionStates[name]) {
-                content.classList.add('expanded');
-                icon.textContent = '▼';
-
-                // Smooth scroll to the expanded section
-                setTimeout(() => {
-                    content.parentElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 500);
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn =>
+                btn.classList.toggle('active', btn.dataset.tab === tabName));
+            document.querySelectorAll('.tab-content').forEach(panel =>
+                panel.classList.toggle('active', panel.id === 'tab-' + tabName));
+            if (tabName === 'board') {
+                initBoardIfNeeded();
+                if (board) board.resize();
+                startPolling();
             } else {
-                content.classList.remove('expanded');
-                icon.textContent = '▶';
+                stopPolling();
             }
+            if (tabName === 'settings') refreshLogs();
         }
 
-        // ========== WiFi ==========
-        let wifiConnected = true;
-        let lastWifiData = null;
-
-        function rssiToSignal(rssi) {
-            // Returns HTML for a CSS-based signal strength bar
-            let strength;
-            if (rssi >= -50) strength = 4;
-            else if (rssi >= -60) strength = 3;
-            else if (rssi >= -70) strength = 2;
-            else strength = 1;
-            const colors = ['#f44336', '#ff9800', '#ffc107', '#4CAF50'];
-            let bars = '';
-            for (let i = 0; i < 4; i++) {
-                const active = i < strength;
-                const h = 6 + i * 4; // bar heights: 6, 10, 14, 18
-                bars += '<span class="rssi-bar' + (active ? ' active' : '') + '" style="height:' + h + 'px;' + (active ? 'background:' + colors[strength - 1] : '') + '"></span>';
-            }
-            return '<span class="rssi-bars">' + bars + '</span>';
+        function goHome() {
+            if (reviewMode) exitReviewMode();
+            fetch('/home', { method: 'POST' }).catch(function() {});
+            showTab('home');
         }
 
-        function encName(enc) {
-            // wifi_auth_mode_t: 0=OPEN,1=WEP,2=WPA_PSK,3=WPA2_PSK,4=WPA_WPA2_PSK,5=WPA2_ENTERPRISE,6=WPA3_PSK,...
-            if (enc === 0) return 'Open';
-            if (enc === 1) return 'WEP';
-            if (enc <= 4) return 'WPA2';
-            if (enc === 5) return 'WPA2-E';
-            return 'WPA3';
-        }
-
-        function renderSavedNetworks(data) {
-            const container = document.getElementById('savedNetworks');
-            const saved = data.saved || [];
-            if (saved.length === 0) {
-                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No saved networks</div>';
-                return;
-            }
-            let html = '';
-            saved.forEach((net, i) => {
-                const isConnected = data.connected && i === data.connectedIndex;
-                const detail = net.rssi !== undefined
-                    ? rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc)
-                    : 'Ch ' + net.channel;
-                const lockIcon = (net.enc !== undefined && net.enc !== 0) ? ' 🔒' : '';
-                html += '<div class="network-item">'
-                    + '<div class="network-info">'
-                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + (isConnected ? ' <span style="color:#4CAF50;font-size:12px;">● Connected</span>' : '') + '</div>'
-                    + '<div class="network-detail">' + detail + lockIcon + '</div>'
-                    + '</div>'
-                    + '<div class="network-actions">'
-                    + (isConnected ? '' : '<button class="net-btn net-btn-connect" onclick="connectSaved(' + i + ')">Connect</button>')
-                    + '<button class="net-btn net-btn-delete" onclick="deleteSaved(' + i + ')">Delete</button>'
-                    + '</div></div>';
-            });
-            container.innerHTML = html;
-        }
-
-        function renderScannedNetworks(data) {
-            const container = document.getElementById('scannedNetworks');
-            const scanned = (data.scanned || []).slice().sort((a, b) => b.rssi - a.rssi);
-            const scanBtn = document.getElementById('scanBtn');
-            if (scanned.length === 0) {
-                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No scan results</div>';
-                if (scanBtn) scanBtn.style.backgroundColor = '#4CAF50';
-                return;
-            }
-            if (scanBtn) scanBtn.style.backgroundColor = '#666';
-            let html = '';
-            scanned.forEach(net => {
-                const isOpen = net.enc === 0;
-                html += '<div class="network-item">'
-                    + '<div class="network-info">'
-                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + '</div>'
-                    + '<div class="network-detail">' + rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc) + (isOpen ? '' : ' 🔒') + '</div>'
-                    + '</div>'
-                    + '<div class="network-actions">'
-                    + '<button class="net-btn net-btn-connect" onclick="connectScanned(\'' + escapeHtml(net.ssid) + '\',' + net.enc + ')">Connect</button>'
-                    + '</div></div>';
-            });
-            container.innerHTML = html;
-        }
-
-        function escapeHtml(s) {
-            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-
-        function updateWiFiInfo(retries, maxRetries) {
-            retries = retries || 0;
-            maxRetries = maxRetries || 20;
-            fetch('/wifi')
-                .then(r => r.json())
-                .then(data => {
-                    lastWifiData = data;
-                    wifiConnected = data.connected;
-                    document.getElementById('scanAllChannels').checked = data.scanAllChannels;
-                    if (!data.connected) {
-                        // Auto-expand WiFi section and scroll to it
-                        if (!sectionStates.wifi) toggleSection('wifi');
-                        setTimeout(() => {
-                            document.getElementById('wifi-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 100);
-                    }
-                    renderSavedNetworks(data);
-                    renderScannedNetworks(data);
-                })
-                .catch(() => {
-                    if (retries < maxRetries) {
-                        const d = Math.min(500 + (retries * 300), 5000);
-                        setTimeout(() => updateWiFiInfo(retries + 1, maxRetries), d);
-                    }
+        function bindToggleGroup(groupId, callback) {
+            document.querySelectorAll('#' + groupId + ' .toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#' + groupId + ' .toggle-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    callback(btn.dataset.value);
                 });
-        }
-
-        function wifiAction(params) {
-            fetch('/wifi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: params
-            }).then(() => {
-                setTimeout(() => updateWiFiInfo(0, 25), 1000);
-            }).catch(() => {
-                setTimeout(() => updateWiFiInfo(0, 25), 1000);
             });
         }
 
-        function connectSaved(idx) {
-            wifiAction('action=connect&index=' + idx);
-        }
-
-        async function deleteSaved(idx) {
-            if (!await showConfirm('Remove this saved network?')) return;
-            // If deleting the connected network, optimistically update UI since the fetch to refresh will fail after disconnection
-            const isDeletingConnected = lastWifiData && lastWifiData.connected && idx === lastWifiData.connectedIndex;
-            if (isDeletingConnected && lastWifiData) {
-                const deleted = lastWifiData.saved[idx];
-                const data = JSON.parse(JSON.stringify(lastWifiData));
-                data.saved.splice(idx, 1);
-                data.connected = false;
-                data.connectedIndex = -1;
-                if (deleted && deleted.rssi !== undefined) {
-                    data.scanned = data.scanned || [];
-                    data.scanned.push(deleted);
-                    data.scanned.sort((a, b) => b.rssi - a.rssi);
-                }
-                lastWifiData = data;
-                wifiConnected = false;
-                renderSavedNetworks(data);
-                renderScannedNetworks(data);
-            }
-            fetch('/wifi', {
+        async function postForm(url, body) {
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=delete&index=' + idx
-            }).then(() => updateWiFiInfo())
-                .catch(() => {
-                    if (!isDeletingConnected) updateWiFiInfo();
-                });
-        }
-
-        async function connectScanned(ssid, enc) {
-            if (enc === 0) {
-                // Open network — connect immediately without password
-                wifiAction('action=connect&ssid=' + encodeURIComponent(ssid));
-                return;
-            }
-            const password = await showPrompt('Enter password for "' + ssid + '":', 'Password');
-            if (password === null) return;
-            wifiAction('action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password));
-        }
-
-        document.getElementById('scanBtn').addEventListener('click', function () {
-            this.textContent = 'Scanning...';
-            this.disabled = true;
-            fetch('/wifi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=scan'
-            }).then(() => {
-                setTimeout(() => {
-                    updateWiFiInfo();
-                    document.getElementById('scanBtn').textContent = 'Scan for Networks';
-                    document.getElementById('scanBtn').disabled = false;
-                }, 6000);
-            }).catch(() => {
-                document.getElementById('scanBtn').textContent = 'Scan for Networks';
-                document.getElementById('scanBtn').disabled = false;
+                body
             });
-        });
-
-        // Handle scan all channels toggle
-        document.getElementById('scanAllChannels').addEventListener('change', function () {
-            fetch('/wifi', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'scanAllChannels=' + (this.checked ? '1' : '0')
-            }).catch(() => { });
-        });
-
-        function updateLichessInfo() {
-            fetch('/lichess')
-                .then(response => response.json())
-                .then(data => {
-                    const statusEl = document.getElementById('lichess-token-status');
-                    if (data.hasToken) {
-                        statusEl.textContent = 'Token configured: ' + data.maskedToken;
-                        statusEl.style.color = '#4CAF50';
-                    } else {
-                        statusEl.textContent = 'No token configured';
-                        statusEl.style.color = '#f44336';
-                    }
-                })
-                .catch(() => {
-                    const statusEl = document.getElementById('lichess-token-status');
-                    statusEl.textContent = 'Error loading status';
-                    statusEl.style.color = '#f44336';
-                });
+            if (!res.ok) throw new Error(await res.text() || 'Request failed');
+            return res.text();
         }
 
-        // Fetch info on page load
-        updateWiFiInfo();
-        updateLichessInfo();
-        updateBoardSettings();
-        updateHardwareConfig();
-        updateOtaStatus();
-
-        // Board settings functions
-        function updateBoardSettings() {
-            fetch('/board-settings')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('brightness').value = data.brightness;
-                    document.getElementById('brightness-value').textContent = data.brightness;
-                    document.getElementById('dimMultiplier').value = data.dimMultiplier;
-                    document.getElementById('dim-value').textContent = data.dimMultiplier + '%';
-                })
-                .catch(() => {
-                    console.log('Error loading board settings');
-                });
+        /* ═══════════ Bot / HvH Setup Toggles ═══════════ */
+        function toggleBotSetup(event) {
+            if (event) event.stopPropagation();
+            botSetupOpen = !botSetupOpen;
+            const panel = document.getElementById('botSetupPanel');
+            const arrow = document.getElementById('botArrow');
+            const card  = document.getElementById('botCardTrigger');
+            panel.classList.toggle('open', botSetupOpen);
+            panel.setAttribute('aria-hidden', String(!botSetupOpen));
+            card.classList.toggle('active', botSetupOpen);
+            if (arrow) arrow.textContent = botSetupOpen ? '▾' : '▸';
+            if (botSetupOpen) setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 360);
         }
 
-        // Update slider value displays in real-time
-        document.getElementById('brightness').addEventListener('input', function () {
-            document.getElementById('brightness-value').textContent = this.value;
-        });
+        function toggleHvhSetup(event) {
+            if (event) event.stopPropagation();
+            hvhSetupOpen = !hvhSetupOpen;
+            const panel = document.getElementById('hvhSetupPanel');
+            const arrow = document.getElementById('hvhArrow');
+            const card  = document.getElementById('hvhCardTrigger');
+            panel.classList.toggle('open', hvhSetupOpen);
+            panel.setAttribute('aria-hidden', String(!hvhSetupOpen));
+            card.classList.toggle('active', hvhSetupOpen);
+            if (arrow) arrow.textContent = hvhSetupOpen ? '▾' : '▸';
+            if (hvhSetupOpen) setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 360);
+        }
 
-        document.getElementById('dimMultiplier').addEventListener('input', function () {
-            document.getElementById('dim-value').textContent = this.value + '%';
-        });
-
-        // Handle board settings form submission
-        document.getElementById('boardSettingsForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            const brightness = document.getElementById('brightness').value;
-            const dimMultiplier = document.getElementById('dimMultiplier').value;
-
-            const formData = new URLSearchParams();
-            formData.append('brightness', brightness);
-            formData.append('dimMultiplier', dimMultiplier);
-
-            fetch('/board-settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: formData
-            })
-                .then(response => {
-                    if (response.ok) {
-                        showAlert('LED settings saved successfully!');
-                    } else {
-                        showAlert('Failed to save settings. Please try again.');
-                    }
-                })
-                .catch(() => {
-                    showAlert('Error saving settings. Please try again.');
-                });
-        });
-
-        // Hardware config functions
-        function updateTransistorLabels(checkbox) {
-            const npnLabel = document.getElementById('hw-npn-label');
-            const pnpLabel = document.getElementById('hw-pnp-label');
-            if (checkbox.checked) {
-                npnLabel.classList.remove('hw-transistor-label-active');
-                pnpLabel.classList.add('hw-transistor-label-active');
-            } else {
-                pnpLabel.classList.remove('hw-transistor-label-active');
-                npnLabel.classList.add('hw-transistor-label-active');
+        /* ═══════════ Game Mode Selection ═══════════ */
+        async function selectGameMode(mode) {
+            let body = 'gamemode=' + mode;
+            if (mode === 2) {
+                body += '&playerColor=' + encodeURIComponent(selectedPlayerColor);
+                body += '&difficulty=' + encodeURIComponent(selectedDifficulty);
             }
-        }
-
-        function updateHardwareConfig() {
-            fetch('/hardware-config')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('hw-ledPin').value = data.ledPin;
-                    document.getElementById('hw-srClkPin').value = data.srClkPin;
-                    document.getElementById('hw-srLatchPin').value = data.srLatchPin;
-                    document.getElementById('hw-srDataPin').value = data.srDataPin;
-                    const srInvert = document.getElementById('hw-srInvert');
-                    srInvert.checked = data.srInvertOutputs;
-                    updateTransistorLabels(srInvert);
-                    for (let i = 0; i < data.rowPins.length; i++) {
-                        document.getElementById('hw-row' + i).value = data.rowPins[i];
-                    }
-                })
-                .catch(() => {
-                    // Set NPN as default active on load failure
-                    updateTransistorLabels(document.getElementById('hw-srInvert'));
-                    console.log('Error loading hardware config');
-                });
-        }
-
-        document.getElementById('hwConfigForm').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            if (!await showConfirm('The board will save the new pin configuration and reboot. If sensor or shift register pins changed, calibration will run automatically. Continue?')) return;
-
-            const formData = new URLSearchParams();
-            formData.append('ledPin', document.getElementById('hw-ledPin').value);
-            formData.append('srClkPin', document.getElementById('hw-srClkPin').value);
-            formData.append('srLatchPin', document.getElementById('hw-srLatchPin').value);
-            formData.append('srDataPin', document.getElementById('hw-srDataPin').value);
-            formData.append('srInvertOutputs', document.getElementById('hw-srInvert').checked ? '1' : '0');
-            for (let i = 0; i < 8; i++) {
-                formData.append('rowPin' + i, document.getElementById('hw-row' + i).value);
+            if (mode === 1 && hvhTimeEnabled) {
+                body += '&timeMinutes=' + hvhTimeMinutes;
+                body += '&timeIncrement=' + hvhTimeIncrement;
             }
-
-            fetch('/hardware-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData.toString()
-            })
-                .then(response => response.text())
-                .then(data => {
-                    showAlert(data);
-                })
-                .catch(() => {
-                    showAlert('Error saving hardware config.');
-                });
-        });
-
-        // Handle calibration button
-        document.getElementById('calibrateBtn').addEventListener('click', async function () {
-            if (await showConfirm('This will clear the current board calibration. The board will need to be calibrated on the next reboot. Continue?')) {
-                fetch('/board-calibrate', {
-                    method: 'POST'
-                })
-                    .then(response => response.text())
-                    .then(data => {
-                        showAlert(data);
-                    })
-                    .catch(() => {
-                        showAlert('Error starting calibration. Please try again.');
-                    });
-            }
-        });
-
-        // Handle Lichess form submission
-        document.getElementById('lichessForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            const token = document.getElementById('lichessToken').value;
-
-            if (token.length < 10) {
-                showAlert('Please enter a valid Lichess API token');
-                return;
-            }
-
-            const formData = new URLSearchParams();
-            formData.append('token', token);
-
-            fetch('/lichess', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: formData
-            })
-                .then(response => {
-                    if (response.ok) {
-                        showAlert('Lichess token saved successfully!');
-                        document.getElementById('lichessToken').value = '';
-                        updateLichessInfo();
-                    } else {
-                        showAlert('Failed to save token. Please try again.');
-                    }
-                })
-                .catch(() => {
-                    showAlert('Error saving token. Please try again.');
-                });
-        });
-
-        // ========== OTA Updates ==========
-
-        const GITHUB_RELEASES_URL = 'https://github.com/joojoooo/OpenChess/releases/tag/';
-
-        function formatVersion(v) {
-            return v === 'dev' ? v : 'v' + v;
-        }
-
-        function updateOtaStatus() {
-            const latestEl = document.getElementById('latest-version');
-            fetch('/ota/status')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('current-version').textContent = formatVersion(data.version);
-                    document.getElementById('autoOtaToggle').checked = data.autoUpdate;
-
-                    if (data.latestVersion) {
-                        const latestVersionStr = formatVersion(data.latestVersion);
-                        latestEl.textContent = latestVersionStr;
-                        latestEl.href = GITHUB_RELEASES_URL + 'v' + data.latestVersion;
-
-                        if (data.available) {
-                            latestEl.style.color = '#4CAF50';
-                            showUpdatePopup(data);
-                        } else {
-                            latestEl.style.color = '#ec8703';
-                        }
-                    } else {
-                        latestEl.textContent = 'unavailable';
-                        latestEl.removeAttribute('href');
-                        latestEl.style.color = '#888';
-                    }
-                })
-                .catch(() => {
-                    document.getElementById('current-version').textContent = 'unknown';
-                    latestEl.textContent = 'unavailable';
-                    latestEl.removeAttribute('href');
-                    latestEl.style.color = '#888';
-                });
-        }
-
-        function showUpdatePopup(data) {
-            const overlay = document.getElementById('updateOverlay');
-            document.getElementById('popup-current-version').textContent = formatVersion(data.version);
-            const newVerEl = document.getElementById('popup-new-version');
-            newVerEl.textContent = formatVersion(data.latestVersion);
-            newVerEl.href = GITHUB_RELEASES_URL + 'v' + data.latestVersion;
-            overlay.classList.add('visible');
-        }
-
-        document.getElementById('updateLaterBtn').addEventListener('click', function () {
-            document.getElementById('updateOverlay').classList.remove('visible');
-        });
-
-        document.getElementById('updateNowBtn').addEventListener('click', function () {
-            const statusEl = document.getElementById('update-popup-status');
-            const btn = this;
-            btn.disabled = true;
-            btn.textContent = 'Updating...';
-            statusEl.style.display = 'block';
-            statusEl.textContent = 'Updating... Do not power off the board!';
-            statusEl.style.color = '#ec8703';
-            document.getElementById('updateLaterBtn').style.display = 'none';
-
-            fetch('/ota/apply', { method: 'POST' })
-                .then(r => r.text())
-                .then(msg => {
-                    statusEl.textContent = msg;
-                    setTimeout(() => {
-                        statusEl.textContent = 'Board is rebooting... Refresh this page in a few seconds.';
-                        statusEl.style.color = '#4CAF50';
-                    }, 3000);
-                })
-                .catch(() => {
-                    statusEl.textContent = 'Update failed. Please try again.';
-                    statusEl.style.color = '#f44336';
-                    btn.disabled = false;
-                    btn.textContent = 'Update Now';
-                    document.getElementById('updateLaterBtn').style.display = '';
-                });
-        });
-
-        // Auto-update toggle
-        document.getElementById('autoOtaToggle').addEventListener('change', function () {
-            const formData = new URLSearchParams();
-            formData.append('autoUpdate', this.checked ? '1' : '0');
-            fetch('/ota/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formData
-            }).catch(() => { });
-        });
-
-        // Drag & Drop OTA upload
-        const dropZone = document.getElementById('otaDropZone');
-        const fileInput = document.getElementById('otaFileInput');
-
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length > 0) handleOtaFile(e.dataTransfer.files[0]);
-        });
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) handleOtaFile(e.target.files[0]);
-            e.target.value = '';
-        });
-
-        async function handleOtaFile(file) {
-            const name = file.name.toLowerCase();
-            let endpoint = '';
-            let typeLabel = '';
-
-            if (name.endsWith('.bin')) {
-                endpoint = '/ota/upload/firmware';
-                typeLabel = 'firmware';
-            } else if (name.endsWith('.tar')) {
-                endpoint = '/ota/upload/web';
-                typeLabel = 'web assets';
-            } else {
-                showAlert('Unsupported file type. Please use .bin (firmware) or .tar (web assets).');
-                return;
-            }
-
-            if (!await showConfirm('Upload ' + file.name + ' as ' + typeLabel + ' update?\n\n' +
-                (typeLabel === 'firmware' ? 'The board will reboot after update.' : 'Web assets will be updated (saved games preserved).'))) {
-                return;
-            }
-
-            const progressEl = document.getElementById('ota-upload-progress');
-            const progressFill = document.getElementById('otaProgressFill');
-            const progressText = document.getElementById('ota-progress-text');
-            progressEl.style.display = 'block';
-            progressFill.style.width = '0%';
-            progressText.textContent = 'Uploading ' + typeLabel + '...';
-
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', endpoint);
-
-            xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    const pct = Math.round((e.loaded / e.total) * 100);
-                    progressFill.style.width = pct + '%';
-                    progressText.textContent = 'Uploading ' + typeLabel + '... ' + pct + '%';
-                }
-            });
-
-            xhr.onload = function () {
-                if (xhr.status === 200) {
-                    progressFill.style.width = '100%';
-                    progressText.textContent = typeLabel === 'firmware'
-                        ? 'Firmware updated! Board is rebooting...'
-                        : 'Web assets updated successfully!';
-                    progressFill.style.backgroundColor = '#4CAF50';
-                    if (typeLabel === 'web assets') {
-                        setTimeout(() => { progressEl.style.display = 'none'; }, 3000);
-                    }
+            const el = document.getElementById('playStatus');
+            el.style.display = 'block';
+            el.textContent = 'Starting…';
+            try {
+                await postForm('./gameselect', body);
+                el.style.display = 'none';
+                if (mode !== 4) {
+                    showTab('board');
                 } else {
-                    progressText.textContent = 'Upload failed: ' + xhr.responseText;
-                    progressFill.style.backgroundColor = '#f44336';
+                    el.style.display = 'block';
+                    el.textContent = 'Sensor test started on the board.';
                 }
-            };
-
-            xhr.onerror = function () {
-                progressText.textContent = 'Upload error. Check connection.';
-                progressFill.style.backgroundColor = '#f44336';
-            };
-
-            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-            xhr.setRequestHeader('X-File-Name', file.name);
-            xhr.send(file);
+            } catch (error) {
+                el.style.display = 'block';
+                el.textContent = error.message;
+            }
         }
+
+        /* ═══════════ Board Settings (chess.js visual) ═══════════ */
+        const defaultThemes = [
+            { value: './pieces/{piece}.svg', label: 'Local SVG (default)' },
+            { value: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png', label: 'Wikipedia' },
+            { value: 'https://chessboardjs.com/img/chesspieces/alpha/{piece}.png', label: 'Alpha' }
+        ];
+
+        function loadBoardVisualSettings() {
+            const saved = localStorage.getItem('chessBoardSettings');
+            if (saved) {
+                try { boardSettings = { ...boardSettings, ...JSON.parse(saved) }; } catch (_) {}
+            }
+            applyBoardVisualSettings();
+        }
+
+        function saveBoardVisualSettings() {
+            localStorage.setItem('chessBoardSettings', JSON.stringify(boardSettings));
+            applyBoardVisualSettings();
+        }
+
+        function applyBoardVisualSettings() {
+            $('#settingNotation').prop('checked', boardSettings.showNotation);
+            $('#settingSound').prop('checked', boardSettings.playSound);
+            $('#settingLightColor').val(boardSettings.lightSquareColor);
+            $('#settingDarkColor').val(boardSettings.darkSquareColor);
+            updatePieceThemeDropdown();
+            $('#settingPieceTheme').val(boardSettings.pieceTheme);
+            updateThemeUI();
+            applyBoardColors();
+        }
+
+        function updatePieceThemeDropdown() {
+            const select = $('#settingPieceTheme');
+            select.empty();
+            defaultThemes.forEach(t => select.append($('<option>', { value: t.value, text: t.label })));
+            if (boardSettings.customThemes && boardSettings.customThemes.length > 0) {
+                boardSettings.customThemes.forEach(t => select.append($('<option>', { value: t.value, text: t.label, 'data-custom': 'true' })));
+            }
+            updateThemeUI();
+        }
+
+        function updateThemeUI() {
+            const selectedValue = boardSettings.pieceTheme;
+            const isCustom = !defaultThemes.some(t => t.value === selectedValue);
+            $('#deleteThemeBtn').toggle(isCustom);
+            const urlDisplay = $('#themeUrlDisplay');
+            urlDisplay.text(selectedValue);
+            urlDisplay.attr('href', selectedValue.replace('{piece}', 'wN'));
+        }
+
+        function applyBoardColors() {
+            $('#boardColorStyle').remove();
+            const style = '<style id="boardColorStyle">' +
+                '.white-1e1d7 { background-color: ' + boardSettings.lightSquareColor + ' !important; color: ' + boardSettings.darkSquareColor + ' !important; }' +
+                '.black-3c85d { background-color: ' + boardSettings.darkSquareColor + ' !important; color: ' + boardSettings.lightSquareColor + ' !important; }' +
+                '</style>';
+            $('head').append(style);
+        }
+
+        function pieceTheme(piece) {
+            return boardSettings.pieceTheme.replace('{piece}', piece);
+        }
+
+        function playMoveSound(isCapture) {
+            if (!boardSettings.playSound) return;
+            const sound = isCapture ? document.getElementById('captureSound') : document.getElementById('moveSound');
+            if (sound) { sound.currentTime = 0; sound.play().catch(() => {}); }
+        }
+
+        function detectCapture(oldPos, newPos) {
+            return Object.keys(newPos || {}).length < Object.keys(oldPos || {}).length;
+        }
+
+        /* ═══════════ Board Init ═══════════ */
+        function createBoard(position) {
+            return Chessboard('board', {
+                draggable: false,
+                position: position,
+                pieceTheme: pieceTheme,
+                showNotation: boardSettings.showNotation,
+                orientation: boardOrientation
+            });
+        }
+
+        function initBoardIfNeeded() {
+            if (boardInitialized) return;
+            boardInitialized = true;
+            loadBoardVisualSettings();
+            board = createBoard('start');
+            $(window).on('resize', function () { if (board) board.resize(); });
+            setTimeout(() => { if (board) board.resize(); }, 50);
+            applyBoardColors();
+            loadLiveGame().then(() => {});
+        }
+
+        function rebuildBoard() {
+            if (!board) return;
+            const currentPosition = board.position();
+            board.destroy();
+            board = createBoard(currentPosition);
+            applyBoardColors();
+        }
+
+        /* ═══════════ Dead Pieces & Material ═══════════ */
+        function getDeadPieces(fen) {
+            const start = { P:8,N:2,B:2,R:2,Q:1, p:8,n:2,b:2,r:2,q:1 };
+            const cur   = { P:0,N:0,B:0,R:0,Q:0, p:0,n:0,b:0,r:0,q:0 };
+            const brd = (fen || '').split(' ')[0];
+            for (const ch of brd) if (ch in cur) cur[ch]++;
+            const dead = {};
+            for (const k in start) dead[k] = Math.max(0, start[k] - cur[k]);
+            return dead;
+        }
+
+        function getMaterialAdv(dead) {
+            let adv = 0;
+            const v = { q:9, r:5, b:3, n:3, p:1 };
+            for (const [k, val] of Object.entries(v)) {
+                adv += (dead[k] || 0) * val;
+                adv -= (dead[k.toUpperCase()] || 0) * val;
+            }
+            return adv;
+        }
+
+        function formatDeadPiecesForSide(dead, sideColor) {
+            const order = sideColor === 'w' ? ['q','r','b','n','p'] : ['Q','R','B','N','P'];
+            let out = '';
+            for (const p of order) {
+                const count = dead[p] || 0;
+                if (count > 0) out += PIECE_SYMBOLS[p].repeat(count);
+            }
+            return out;
+        }
+
+        /* ═══════════ Binary game parsing ═══════════ */
+        const sharedTextDecoder = new TextDecoder();
+
+        function promoCodeToChar(code) {
+            switch (code) { case 1: return 'q'; case 2: return 'r'; case 3: return 'b'; case 4: return 'n'; default: return ''; }
+        }
+
+        function decodeMove(encoded) {
+            const from = (encoded >> 10) & 0x3F;
+            const to = (encoded >> 4) & 0x3F;
+            const promo = encoded & 0x0F;
+            const files = 'abcdefgh';
+            return files[from % 8] + (8 - Math.floor(from / 8)) + files[to % 8] + (8 - Math.floor(to / 8)) + promoCodeToChar(promo);
+        }
+
+        function parseMoves(dataView, moveCount, startOffset) {
+            const moves = [];
+            let offset = startOffset;
+            for (let i = 0; i < moveCount; i++) { moves.push(dataView.getUint16(offset, true)); offset += 2; }
+            return { moves, endOffset: offset };
+        }
+
+        function parseFenTable(buffer, startOffset, count) {
+            const fens = [];
+            const dv = new DataView(buffer);
+            let offset = startOffset;
+            for (let i = 0; i < count; i++) {
+                if (offset >= buffer.byteLength) break;
+                const len = dv.getUint8(offset); offset++;
+                fens.push(sharedTextDecoder.decode(new Uint8Array(buffer, offset, len)));
+                offset += len;
+            }
+            return fens;
+        }
+
+        function createSegment(fen, moveBuffer) {
+            const engine = new Chess(fen);
+            for (const uci of moveBuffer) {
+                try {
+                    var from = uci.substring(0, 2), to = uci.substring(2, 4), promo = uci.length > 4 ? uci[4] : undefined;
+                    engine.move({ from: from, to: to, promotion: promo });
+                } catch (e) { console.warn('Replay failed:', uci, e); }
+            }
+            return { fen, engine, moveCount: engine.history().length, globalOffset: 0, span: 0 };
+        }
+
+        function parseGameHeader(dataView) {
+            const mode = dataView.getUint8(1);
+            const byte4 = dataView.getUint8(4);
+            const byte5 = dataView.getUint8(5);
+            return {
+                version: dataView.getUint8(0), mode: mode, result: dataView.getUint8(2),
+                winnerColor: String.fromCharCode(dataView.getUint8(3)),
+                playerColor: String.fromCharCode(byte4), botDepth: byte5,
+                timeMinutes: (mode === 1) ? byte4 : 0, timeIncrement: (mode === 1) ? byte5 : 0,
+                moveCount: dataView.getUint16(6, true), fenEntryCnt: dataView.getUint16(8, true),
+                lastFenOffset: dataView.getUint16(10, true), timestamp: dataView.getUint32(12, true)
+            };
+        }
+
+        function parseCompletedGame(buffer) {
+            const dv = new DataView(buffer);
+            const hdr = parseGameHeader(dv);
+            const { moves, endOffset } = parseMoves(dv, hdr.moveCount, GAME_HEADER_SIZE);
+            const fens = parseFenTable(buffer, endOffset, hdr.fenEntryCnt);
+            return { header: hdr, moves, fens };
+        }
+
+        function parseLiveGame(movesBuffer, fenBuffer) {
+            const dv = new DataView(movesBuffer);
+            const hdr = parseGameHeader(dv);
+            const { moves } = parseMoves(dv, hdr.moveCount, GAME_HEADER_SIZE);
+            const fens = (fenBuffer && fenBuffer.byteLength > 0) ? parseFenTable(fenBuffer, 0, hdr.fenEntryCnt) : [];
+            return { header: hdr, moves, fens };
+        }
+
+        function buildGameSegments(parsed) {
+            const { moves, fens } = parsed;
+            const segments = [];
+            let fenIdx = -1, currentFen = null, currentMoveBuffer = [];
+            for (let i = 0; i < moves.length; i++) {
+                if (moves[i] === FEN_MARKER) {
+                    if (currentFen !== null) segments.push(createSegment(currentFen, currentMoveBuffer));
+                    fenIdx++;
+                    currentFen = (fenIdx < fens.length) ? fens[fenIdx] : currentFen;
+                    currentMoveBuffer = [];
+                } else {
+                    if (currentFen === null) currentFen = START_FEN;
+                    currentMoveBuffer.push(decodeMove(moves[i]));
+                }
+            }
+            if (currentFen !== null) segments.push(createSegment(currentFen, currentMoveBuffer));
+            if (segments.length === 0) segments.push(createSegment(START_FEN, []));
+            computeSegmentOffsets(segments);
+            return segments;
+        }
+
+        function computeSegmentOffsets(segments) {
+            let offset = 0;
+            for (let s = 0; s < segments.length; s++) {
+                segments[s].globalOffset = offset;
+                segments[s].span = 1 + segments[s].moveCount;
+                offset += segments[s].span;
+            }
+        }
+
+        function computeGlobalTotal(segments) {
+            if (segments.length === 0) return 0;
+            const last = segments[segments.length - 1];
+            return last.globalOffset + last.moveCount;
+        }
+
+        function resolveGlobalIndex(segments, globalIdx) {
+            for (let s = 0; s < segments.length; s++) {
+                const seg = segments[s];
+                const localIdx = globalIdx - seg.globalOffset;
+                if (localIdx >= 0 && localIdx <= seg.moveCount) {
+                    return { segmentIdx: s, localMoveIdx: localIdx, isBoardEdit: (s > 0 && localIdx === 0) };
+                }
+            }
+            const last = segments[segments.length - 1];
+            return { segmentIdx: segments.length - 1, localMoveIdx: last.moveCount, isBoardEdit: false };
+        }
+
+        function getSegmentsFenAtIndex(segments, globalIdx) {
+            if (!segments || segments.length === 0) return null;
+            const { segmentIdx, localMoveIdx } = resolveGlobalIndex(segments, globalIdx);
+            const seg = segments[segmentIdx];
+            if (localMoveIdx === 0) return seg.fen;
+            const hist = seg.engine.history({ verbose: true });
+            if (localMoveIdx > hist.length) return seg.engine.fen();
+            return hist[localMoveIdx - 1].after;
+        }
+
+        /* ═══════════ Move Navigation ═══════════ */
+        function getActiveSegments() { return reviewMode ? reviewSegments : liveSegments; }
+        function getActiveMoveIndex() { return reviewMode ? reviewMoveIndex : moveIndex; }
+        function setActiveMoveIndex(idx) { if (reviewMode) reviewMoveIndex = idx; else moveIndex = idx; }
+        function getActiveTotalMoves() { return reviewMode ? reviewTotalMoves : totalMoves; }
+
+        function buildMoveScroller() {
+            const segments = getActiveSegments();
+            const scroller = document.getElementById('moveScroller');
+            if (!scroller) return;
+            if (!segments || segments.length === 0 || getActiveTotalMoves() === 0) {
+                scroller.innerHTML = '<span class="bf-moves-empty">No moves yet</span>';
+                return;
+            }
+            let html = '';
+            for (let s = 0; s < segments.length; s++) {
+                const seg = segments[s];
+                const hist = seg.engine.history({ verbose: true });
+                if (s > 0) html += '<span class="ms-edit" data-gidx="' + seg.globalOffset + '">✎</span>';
+                if (hist.length === 0) continue;
+                const fenParts = seg.fen.split(' ');
+                let moveNum = parseInt(fenParts[5]) || 1;
+                let isWhiteTurn = ((fenParts[1] || 'w') === 'w');
+                for (let m = 0; m < hist.length; m++) {
+                    const globalIdx = seg.globalOffset + 1 + m;
+                    if (isWhiteTurn) {
+                        html += '<span class="ms-num">' + moveNum + '.</span>';
+                        html += '<span class="ms-move" data-gidx="' + globalIdx + '">' + hist[m].san + '</span>';
+                        isWhiteTurn = false;
+                    } else {
+                        if (m === 0) html += '<span class="ms-num">' + moveNum + '…</span>';
+                        html += '<span class="ms-move" data-gidx="' + globalIdx + '">' + hist[m].san + '</span>';
+                        isWhiteTurn = true;
+                        moveNum++;
+                    }
+                }
+            }
+            const activeIdx = getActiveMoveIndex();
+            if (!reviewMode && isLive) {
+                html += '<span class="ms-live ms-move active" data-gidx="' + getActiveTotalMoves() + '">●</span>';
+            }
+            scroller.innerHTML = html;
+            scroller.querySelectorAll('.ms-move').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.gidx) === activeIdx);
+            });
+            const activeEl = scroller.querySelector('.ms-move.active');
+            if (activeEl) activeEl.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+        }
+
+        document.addEventListener('click', function(e) {
+            const move = e.target.closest('.ms-move, .ms-edit');
+            if (move && move.dataset.gidx !== undefined) navigateToMove(parseInt(move.dataset.gidx));
+        });
+
+        function navigateToMove(idx) {
+            const segments = getActiveSegments();
+            if (!segments || segments.length === 0) return;
+            const total = getActiveTotalMoves();
+            idx = Math.max(0, Math.min(idx, total));
+            setActiveMoveIndex(idx);
+            if (!reviewMode) isLive = (idx === total);
+            const fen = getSegmentsFenAtIndex(segments, idx);
+            if (fen) {
+                currentDisplayedFen = fen;
+                board.position(fen.split(' ')[0], true);
+            }
+            buildMoveScroller();
+            updatePlayerBars(lastBoardData);
+            if (reviewMode) { highlightReviewMove(); updateEvalBarForCurrent(); }
+        }
+
+        function navFirst() { navigateToMove(0); }
+        function navPrev() { navigateToMove(getActiveMoveIndex() - 1); }
+        function navNext() { navigateToMove(getActiveMoveIndex() + 1); }
+        function navLast() { navigateToMove(getActiveTotalMoves()); }
+
+        /* ═══════════ Live Game ═══════════ */
+        async function loadLiveGame() {
+            try {
+                const [movesResp, fenResp] = await Promise.all([fetch('/games?id=live1'), fetch('/games?id=live2')]);
+                if (!movesResp.ok) return false;
+                const movesBuffer = await movesResp.arrayBuffer();
+                const fenBuffer = fenResp.ok ? await fenResp.arrayBuffer() : new ArrayBuffer(0);
+                if (movesBuffer.byteLength < GAME_HEADER_SIZE) return false;
+                const parsed = parseLiveGame(movesBuffer, fenBuffer);
+                liveSegments = buildGameSegments(parsed);
+                totalMoves = computeGlobalTotal(liveSegments);
+                moveIndex = totalMoves;
+                isLive = true;
+                liveGameLoaded = true;
+                buildMoveScroller();
+                return true;
+            } catch (e) { console.log('Failed to load live game:', e); return false; }
+        }
+
+        /* ═══════════ FEN Parsing ═══════════ */
+        function isValidPositionFen(fen) {
+            if (!fen || typeof fen !== 'string') return false;
+            const ranks = fen.split('/');
+            if (ranks.length !== 8) return false;
+            const validPieces = 'prnbqkPRNBQK';
+            for (const rank of ranks) {
+                let squares = 0;
+                for (const char of rank) {
+                    if (char >= '1' && char <= '8') squares += parseInt(char);
+                    else if (validPieces.includes(char)) squares += 1;
+                    else return false;
+                }
+                if (squares !== 8) return false;
+            }
+            return true;
+        }
+
+        function parseFullFen(fen, doPlaySound) {
+            if (doPlaySound === undefined) doPlaySound = true;
+            const parts = fen.trim().split(/\s+/);
+            if (parts.length < 1) return false;
+            const positionFen = parts[0];
+            if (!isValidPositionFen(positionFen)) return false;
+            const oldPosition = board ? board.position() : null;
+            board.position(positionFen);
+            const newPosition = board.position();
+            if (doPlaySound && oldPosition && previousValidFen !== positionFen) {
+                playMoveSound(detectCapture(oldPosition, newPosition));
+            }
+            previousValidFen = positionFen;
+            if (parts.length >= 2) currentTurn = parts[1] === 'b' ? 'b' : 'w';
+            return true;
+        }
+
+        /* ═══════════ Player Bars ═══════════ */
+        function formatClock(ms) {
+            if (ms < 0) ms = 0;
+            var totalSec = Math.ceil(ms / 1000);
+            var m = Math.floor(totalSec / 60);
+            var s = totalSec % 60;
+            return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        function updatePlayerBars(data) {
+            lastBoardData = data || lastBoardData;
+            const d = lastBoardData;
+            const fen = currentDisplayedFen || START_FEN;
+            const dead = getDeadPieces(fen);
+            const adv = getMaterialAdv(dead);
+            const hasGame = d.mode > 0 && d.mode < 5;
+            const hasClocks = d.clockWhite !== undefined && d.clockBlack !== undefined;
+            const topSide = boardOrientation === 'white' ? 'b' : 'w';
+            const bottomSide = topSide === 'b' ? 'w' : 'b';
+            const nameW = d.playerWhite || 'White';
+            const nameB = d.playerBlack || 'Black';
+
+            const topName = topSide === 'b' ? nameB : nameW;
+            const topDead = formatDeadPiecesForSide(dead, topSide);
+            const topAdv = topSide === 'w' ? adv : -adv;
+            const topMs = topSide === 'w' ? d.clockWhite : d.clockBlack;
+            const topAct = hasClocks && d.turn === topSide && !d.gameOver;
+
+            document.getElementById('playerNameTop').textContent = hasGame ? topName : '–';
+            document.getElementById('playerDeadTop').textContent = topDead;
+            document.getElementById('playerAdvTop').textContent = topAdv > 0 ? '+' + topAdv : '';
+            const clockTopEl = document.getElementById('clockTop');
+            clockTopEl.textContent = hasClocks ? formatClock(topMs) : '--:--';
+            clockTopEl.classList.toggle('active', hasClocks && topAct);
+
+            const botName = bottomSide === 'b' ? nameB : nameW;
+            const botDead = formatDeadPiecesForSide(dead, bottomSide);
+            const botAdv = bottomSide === 'w' ? adv : -adv;
+            const botMs = bottomSide === 'w' ? d.clockWhite : d.clockBlack;
+            const botAct = hasClocks && d.turn === bottomSide && !d.gameOver;
+
+            document.getElementById('playerNameBottom').textContent = hasGame ? botName : '–';
+            document.getElementById('playerDeadBottom').textContent = botDead;
+            document.getElementById('playerAdvBottom').textContent = botAdv > 0 ? '+' + botAdv : '';
+            const clockBotEl = document.getElementById('clockBottom');
+            clockBotEl.textContent = hasClocks ? formatClock(botMs) : '--:--';
+            clockBotEl.classList.toggle('active', hasClocks && botAct);
+        }
+
+        function updateLiveStatusChips(data) {
+            const banner = document.getElementById('boardModeBanner');
+            if (reviewMode && reviewGameMeta) {
+                const m = reviewGameMeta;
+                let text = MODE_NAMES[m.mode] || 'Game Review';
+                const winner = formatWinner(m.winnerColor, m.result);
+                text += ' · ' + (m.winnerColor === 'd' ? 'Draw' : winner.replace(/<[^>]*>/g, ''));
+                banner.textContent = text;
+                banner.classList.add('active');
+            } else if (data.mode > 0 && data.mode < 5) {
+                const turn = data.turn === 'w' ? 'White to move' : (data.turn === 'b' ? 'Black to move' : '');
+                let text = MODE_NAMES[data.mode] || 'Game';
+                if (data.gameOver) text += ' · Game Over';
+                else if (turn) text += ' · ' + turn;
+                banner.textContent = text;
+                banner.classList.add('active');
+            } else {
+                banner.textContent = 'No Active Game';
+                banner.classList.remove('active');
+            }
+        }
+
+        /* ═══════════ Promotion ═══════════ */
+        function showPromotionOverlay(color) {
+            const pieces = (color === 'w')
+                ? [{code:'q',piece:'wQ'},{code:'r',piece:'wR'},{code:'b',piece:'wB'},{code:'n',piece:'wN'}]
+                : [{code:'q',piece:'bQ'},{code:'r',piece:'bR'},{code:'b',piece:'bB'},{code:'n',piece:'bN'}];
+            const container = $('#promotionPieces');
+            container.empty();
+            pieces.forEach(p => {
+                const btn = $('<button class="promotion-piece-btn" data-piece="' + p.code + '"></button>');
+                btn.append('<img src="' + pieceTheme(p.piece) + '" alt="' + p.piece + '">');
+                btn.on('click', function() { selectPromotion(p.code); });
+                container.append(btn);
+            });
+            promotionPending = true;
+            $('#promotionOverlay').addClass('visible');
+        }
+
+        function hidePromotionOverlay() {
+            promotionPending = false;
+            $('#promotionOverlay').removeClass('visible');
+        }
+
+        function selectPromotion(piece) {
+            hidePromotionOverlay();
+            promotionCooldownUntil = Date.now() + 2000;
+            fetch('/promotion', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'piece=' + encodeURIComponent(piece) })
+                .catch(e => console.log('Promotion request error:', e));
+        }
+
+        /* ═══════════ Eval Bar ═══════════ */
+        function updateEvalBar(evaluation, mate) {
+            const fill = document.getElementById('evalBarWhite');
+            const labelTop = document.getElementById('evalLabelTop');
+            const labelBot = document.getElementById('evalLabelBot');
+            if (!fill) return;
+            let whitePct, labelText;
+            if (mate !== null && mate !== undefined) {
+                whitePct = mate > 0 ? 97 : 3;
+                labelText = 'M' + Math.abs(mate);
+            } else if (evaluation !== null && evaluation !== undefined) {
+                whitePct = Math.max(4, Math.min(96, 50 + evaluation * 6));
+                labelText = (evaluation >= 0 ? '+' : '') + evaluation.toFixed(1);
+            } else {
+                whitePct = 50; labelText = '0.0';
+            }
+            if (boardOrientation === 'black') whitePct = 100 - whitePct;
+            fill.style.height = whitePct + '%';
+            if (whitePct >= 50) { labelBot.textContent = labelText; labelTop.textContent = ''; }
+            else { labelTop.textContent = labelText; labelBot.textContent = ''; }
+        }
+
+        function updateEvalBarForCurrent() {
+            if (!reviewMode) return;
+            var hasAny = Object.keys(reviewAnalysis).length > 0;
+            var a = reviewAnalysis[reviewMoveIndex];
+            if (a) {
+                document.getElementById('evalBarWrap').style.display = '';
+                updateEvalBar(a.evaluation, a.mate);
+            } else if (!hasAny) {
+                document.getElementById('evalBarWrap').style.display = 'none';
+            }
+            updateBestMoveDisplay();
+        }
+
+        function updateBestMoveDisplay() {
+            var el = document.getElementById('bestMoveInfo');
+            if (!el) return;
+            if (!reviewMode || !Object.keys(reviewAnalysis).length) { el.style.display = 'none'; return; }
+            var a = reviewAnalysis[reviewMoveIndex];
+            if (!a || !a.bestmove) { el.style.display = 'none'; return; }
+            el.style.display = '';
+            var color = getMoveColorAtGlobalIndex(reviewMoveIndex);
+            var ann = color ? classifyReviewedMove(reviewMoveIndex, color) : null;
+            var badgeEl = document.getElementById('currentMoveBadge');
+            var textEl = document.getElementById('currentMoveText');
+            var evalEl = document.getElementById('currentMoveEval');
+            var bm = a.bestmove;
+            // Try to convert UCI to SAN
+            try {
+                var fen = getSegmentsFenAtIndex(reviewSegments, reviewMoveIndex);
+                if (fen) {
+                    var tmpEng = new Chess(fen);
+                    var from = bm.substring(0,2), to = bm.substring(2,4), promo = bm.length > 4 ? bm[4] : undefined;
+                    var mv = tmpEng.move({ from: from, to: to, promotion: promo });
+                    if (mv) bm = mv.san;
+                }
+            } catch(e) {}
+            var evalStr = '';
+            if (a.mate != null) evalStr = (a.mate > 0 ? '+' : '') + 'M' + a.mate;
+            else if (a.evaluation != null) evalStr = (a.evaluation >= 0 ? '+' : '') + a.evaluation.toFixed(1);
+            if (badgeEl) {
+                badgeEl.textContent = ann ? ann.label : 'Review';
+                badgeEl.className = 'rv-move-badge rv-move-badge-' + (ann ? ann.key : 'review');
+            }
+            if (textEl) textEl.textContent = ann ? ('Move ' + reviewMoveIndex + ' is ' + ann.label.toLowerCase()) : ('Move ' + reviewMoveIndex);
+            if (evalEl) evalEl.textContent = evalStr;
+            document.getElementById('bestMoveText').innerHTML = 'Best line: <strong>' + bm + '</strong>';
+        }
+
+        /* ═══════════ Win% Engine (chess.com-style) ═══════════ */
+        function cpToWinPct(evaluation, mate) {
+            if (mate != null) return mate > 0 ? 100 : 0;
+            var cp = (evaluation || 0) * 100;
+            return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+        }
+
+        function getAnalysisWinChance(entry) {
+            if (!entry) return null;
+            if (typeof entry.winChance === 'number' && isFinite(entry.winChance)) return entry.winChance;
+            if (entry.mate != null || entry.evaluation != null) return cpToWinPct(entry.evaluation, entry.mate);
+            return null;
+        }
+
+        /* ═══════════ Opening Recognition ═══════════ */
+        const OPENINGS = {
+            'e2e4':'King\'s Pawn Opening','d2d4':'Queen\'s Pawn Opening','c2c4':'English Opening','g1f3':'Réti Opening',
+            'f2f4':'Bird\'s Opening','b2b3':'Larsen\'s Opening','g2g3':'King\'s Fianchetto Opening',
+            'e2e4 e7e5':'Open Game','e2e4 c7c5':'Sicilian Defense','e2e4 e7e6':'French Defense',
+            'e2e4 c7c6':'Caro-Kann Defense','e2e4 d7d5':'Scandinavian Defense','e2e4 g8f6':'Alekhine\'s Defense',
+            'e2e4 d7d6':'Pirc Defense','e2e4 g7g6':'Modern Defense',
+            'e2e4 e7e5 g1f3':'King\'s Knight Opening','e2e4 e7e5 f1c4':'Bishop\'s Opening',
+            'e2e4 e7e5 f2f4':'King\'s Gambit','e2e4 e7e5 d2d4':'Center Game',
+            'e2e4 e7e5 g1f3 b8c6':'Four Knights Setup','e2e4 e7e5 g1f3 g8f6':'Petrov\'s Defense',
+            'e2e4 e7e5 g1f3 b8c6 f1b5':'Ruy Lopez','e2e4 e7e5 g1f3 b8c6 f1c4':'Italian Game',
+            'e2e4 e7e5 g1f3 b8c6 d2d4':'Scotch Game',
+            'e2e4 e7e5 g1f3 b8c6 f1c4 f8c5':'Giuoco Piano',
+            'e2e4 e7e5 g1f3 b8c6 f1c4 g8f6':'Two Knights Defense',
+            'e2e4 c7c5 g1f3':'Sicilian: Open','e2e4 c7c5 g1f3 d7d6':'Sicilian: Najdorf/Classical',
+            'e2e4 c7c5 g1f3 b8c6':'Sicilian: Open Variation','e2e4 c7c5 g1f3 e7e6':'Sicilian: Kan/Taimanov',
+            'e2e4 c7c5 b1c3':'Sicilian: Closed','e2e4 c7c6 d2d4 d7d5':'Caro-Kann: Main Line',
+            'e2e4 e7e6 d2d4 d7d5':'French: Main Line',
+            'd2d4 d7d5':'Closed Game','d2d4 g8f6':'Indian Defense','d2d4 f7f5':'Dutch Defense',
+            'd2d4 d7d5 c2c4':'Queen\'s Gambit','d2d4 d7d5 c2c4 e7e6':'Queen\'s Gambit Declined',
+            'd2d4 d7d5 c2c4 d5c4':'Queen\'s Gambit Accepted','d2d4 d7d5 c2c4 c7c6':'Slav Defense',
+            'd2d4 g8f6 c2c4':'Indian Game','d2d4 g8f6 c2c4 g7g6':'King\'s Indian Defense',
+            'd2d4 g8f6 c2c4 e7e6':'Nimzo/Queen\'s Indian',
+            'd2d4 g8f6 c2c4 e7e6 b1c3 f8b4':'Nimzo-Indian Defense',
+            'd2d4 g8f6 c2c4 e7e6 g2g3':'Catalan Opening',
+            'd2d4 g8f6 c2c4 c7c5':'Benoni Defense',
+            'd2d4 g8f6 c2c4 g7g6 b1c3 d7d5':'Grünfeld Defense',
+            'c2c4 e7e5':'English: Reversed Sicilian','c2c4 g8f6':'English: Indian Setup',
+            'g1f3 d7d5 g2g3':'Réti: King\'s Indian Attack'
+        };
+
+        function detectOpening(segments) {
+            if (!segments || !segments.length) return null;
+            var seg = segments[0];
+            if (seg.fen !== START_FEN) return null;
+            var hist = seg.engine.history({ verbose: true });
+            if (!hist.length) return null;
+            var best = null, moves = '';
+            for (var i = 0; i < Math.min(hist.length, 14); i++) {
+                if (i > 0) moves += ' ';
+                moves += hist[i].from + hist[i].to;
+                if (OPENINGS[moves]) best = OPENINGS[moves];
+            }
+            return best;
+        }
+
+        function normalizeUciMove(move) {
+            return (move || '').toString().trim().toLowerCase();
+        }
+
+        function getMoveColorAtGlobalIndex(globalIdx) {
+            if (!reviewSegments || !reviewSegments.length || globalIdx <= 0) return null;
+            var resolved = resolveGlobalIndex(reviewSegments, globalIdx);
+            if (!resolved || resolved.localMoveIdx <= 0) return null;
+            var seg = reviewSegments[resolved.segmentIdx];
+            var hist = seg.engine.history({ verbose: true });
+            var move = hist[resolved.localMoveIdx - 1];
+            return move ? move.color : null;
+        }
+
+        function isBookMove(globalIdx) {
+            if (!reviewSegments || !reviewSegments.length || globalIdx <= 0) return false;
+            if (reviewSegments[0].fen !== START_FEN) return false;
+            var resolved = resolveGlobalIndex(reviewSegments, globalIdx);
+            if (!resolved || resolved.segmentIdx !== 0 || resolved.localMoveIdx <= 0) return false;
+            var hist = reviewSegments[0].engine.history({ verbose: true });
+            var line = [];
+            for (var i = 0; i < resolved.localMoveIdx && i < hist.length; i++) {
+                line.push(hist[i].from + hist[i].to + (hist[i].promotion || ''));
+            }
+            if (!line.length) return false;
+            var sequence = line.join(' ');
+            return Object.keys(OPENINGS).some(function(key) {
+                return key === sequence || key.indexOf(sequence + ' ') === 0;
+            });
+        }
+
+        function getMoveUciAtGlobalIndex(globalIdx) {
+            if (!reviewSegments || !reviewSegments.length || globalIdx <= 0) return '';
+            var resolved = resolveGlobalIndex(reviewSegments, globalIdx);
+            if (!resolved || resolved.localMoveIdx <= 0) return '';
+            var seg = reviewSegments[resolved.segmentIdx];
+            var hist = seg.engine.history({ verbose: true });
+            var move = hist[resolved.localMoveIdx - 1];
+            if (!move) return '';
+            return (move.from || '') + (move.to || '') + (move.promotion || '');
+        }
+
+        function classifyReviewedMove(globalIdx, color) {
+            if (!Object.keys(reviewAnalysis).length) return null;
+            var prevA = reviewAnalysis[globalIdx - 1];
+            var currA = reviewAnalysis[globalIdx];
+            if (!prevA || !currA) return null;
+
+            if (isBookMove(globalIdx)) {
+                return { label: 'Book', symbol: '◇', cls: 'ann-book', pgnCls: 'pgn-book', key: 'book' };
+            }
+
+            var wpBefore = getAnalysisWinChance(prevA);
+            var wpAfter = getAnalysisWinChance(currA);
+            if (wpBefore == null || wpAfter == null) return null;
+
+            var actualMove = normalizeUciMove(getMoveUciAtGlobalIndex(globalIdx));
+            var bestMove = normalizeUciMove(prevA.bestmove || prevA.bestMove);
+            var matchedBest = !!actualMove && !!bestMove && actualMove === bestMove;
+            var wpLoss = color === 'w' ? (wpBefore - wpAfter) : (wpAfter - wpBefore);
+            var improvement = color === 'w' ? (wpAfter - wpBefore) : (wpBefore - wpAfter);
+            var wasWorse = color === 'w' ? wpBefore <= 35 : wpBefore >= 65;
+            var nowBetter = color === 'w' ? wpAfter >= 55 : wpAfter <= 45;
+            var wasWinning = color === 'w' ? wpBefore >= 75 : wpBefore <= 25;
+
+            if (matchedBest && improvement >= 18 && wasWorse && nowBetter) {
+                return { label: 'Brilliant', symbol: '!!', cls: 'ann-brilliant', pgnCls: 'pgn-brilliant', key: 'brilliant' };
+            }
+            if (matchedBest && improvement >= 9) {
+                return { label: 'Great', symbol: '!', cls: 'ann-great', pgnCls: 'pgn-great', key: 'great' };
+            }
+            if (matchedBest) {
+                return { label: 'Best', symbol: '★', cls: 'ann-best', pgnCls: 'pgn-best', key: 'best' };
+            }
+            if (wasWinning && wpLoss >= 24) {
+                return { label: 'Miss', symbol: '&#10007;', cls: 'ann-miss', pgnCls: 'pgn-miss', key: 'miss' };
+            }
+            if (wpLoss <= 3) {
+                return { label: 'Excellent', symbol: '✓', cls: 'ann-excellent', pgnCls: 'pgn-excellent', key: 'excellent' };
+            }
+            if (wpLoss <= 8) {
+                return { label: 'Good', symbol: '✓', cls: 'ann-good', pgnCls: 'pgn-good', key: 'good' };
+            }
+            if (wpLoss <= 14) {
+                return { label: 'Inaccuracy', symbol: '?!', cls: 'ann-inaccuracy', pgnCls: 'pgn-inaccuracy', key: 'inaccuracy' };
+            }
+            if (wpLoss <= 27) {
+                return { label: 'Mistake', symbol: '?', cls: 'ann-mistake', pgnCls: 'pgn-mistake', key: 'mistake' };
+            }
+
+            return { label: 'Blunder', symbol: '??', cls: 'ann-blunder', pgnCls: 'pgn-blunder', key: 'blunder' };
+        }
+
+        /* ═══════════ Move Annotations ═══════════ */
+        function classifyMove(evalBefore, evalAfter, sideToMove) {
+            if (evalBefore == null || evalAfter == null) return null;
+            var wpB = cpToWinPct(evalBefore, null), wpA = cpToWinPct(evalAfter, null);
+            var wpLoss = sideToMove === 'w' ? (wpB - wpA) : (wpA - wpB);
+            if (wpLoss < -8) return { label: 'Brilliant', symbol: '!!', cls: 'ann-brilliant' };
+            if (wpLoss < -2) return { label: 'Great', symbol: '!', cls: 'ann-great' };
+            if (wpLoss <= 2) return { label: 'Best', symbol: '★', cls: 'ann-best' };
+            if (wpLoss <= 5) return { label: 'Excellent', symbol: '✓', cls: 'ann-excellent' };
+            if (wpLoss <= 8) return { label: 'Good', symbol: '✓', cls: 'ann-good' };
+            if (wpLoss <= 15) return { label: 'Inaccuracy', symbol: '?!', cls: 'ann-inaccuracy' };
+            if (wpLoss <= 25) return { label: 'Mistake', symbol: '?', cls: 'ann-mistake' };
+            return { label: 'Blunder', symbol: '??', cls: 'ann-blunder' };
+        }
+
+        function getMoveAnnotation(globalIdx, color) {
+            var ann = classifyReviewedMove(globalIdx, color);
+            if (!ann || !ann.symbol) return '';
+            return '<span class="ann-symbol ' + ann.cls + '" title="' + ann.label + '">' + ann.symbol + '</span>';
+        }
+
+        function getMoveClassForPgn(globalIdx, color) {
+            var ann = classifyReviewedMove(globalIdx, color);
+            return ann ? ann.pgnCls : '';
+        }
+
+        /* ═══════════ Game Review ═══════════ */
+        function enterReviewMode(segments, meta) {
+            reviewMode = true;
+            reviewSegments = segments;
+            reviewGameMeta = meta;
+            reviewTotalMoves = computeGlobalTotal(segments);
+            reviewMoveIndex = reviewTotalMoves;
+            reviewAnalysis = {};
+            stopPolling();
+            document.getElementById('evalBarWrap').style.display = 'none';
+            // Swap footer buttons: hide live actions, show review action
+            document.getElementById('liveGameActions').style.display = 'none';
+            document.getElementById('reviewGameActions').style.display = '';
+            // Show review side panel
+            document.getElementById('reviewSideCol').style.display = '';
+            document.getElementById('exitReviewBtn').style.display = '';
+            document.getElementById('reviewMovesPanel').style.display = '';
+            // Detect opening
+            var opening = detectOpening(segments);
+            var openingEl = document.getElementById('openingName');
+            if (openingEl) { openingEl.textContent = opening || ''; openingEl.style.display = opening ? '' : 'none'; }
+            // Reset best move
+            var bestEl = document.getElementById('bestMoveInfo');
+            if (bestEl) bestEl.style.display = 'none';
+            resetReviewPanel();
+            buildReviewPanel();
+            var fen = getSegmentsFenAtIndex(segments, reviewTotalMoves);
+            if (fen) { currentDisplayedFen = fen; board.position(fen.split(' ')[0], false); }
+            buildMoveScroller();
+            highlightReviewMove();
+            updatePlayerBars(lastBoardData);
+            updateLiveStatusChips(lastBoardData);
+        }
+
+        function exitReviewMode() {
+            reviewMode = false;
+            reviewSegments = [];
+            reviewGameMeta = null;
+            reviewMoveIndex = 0;
+            reviewTotalMoves = 0;
+            reviewAnalysis = {};
+            if (isAnalyzing) {
+                if (analyzeController) analyzeController.abort();
+                isAnalyzing = false;
+                $('#analyzeBtn').html('&#9733; Start Review');
+                $('#analyzeProgress').hide();
+            }
+            document.getElementById('evalBarWrap').style.display = 'none';
+            // Swap footer buttons back
+            document.getElementById('liveGameActions').style.display = '';
+            document.getElementById('reviewGameActions').style.display = 'none';
+            // Hide review side panel
+            document.getElementById('reviewSideCol').style.display = 'none';
+            document.getElementById('exitReviewBtn').style.display = 'none';
+            document.getElementById('reviewMovesPanel').style.display = 'none';
+            if (liveSegments.length > 0 && liveGameLoaded) {
+                const fen = getSegmentsFenAtIndex(liveSegments, totalMoves);
+                if (fen) { board.position(fen.split(' ')[0], false); currentDisplayedFen = fen; }
+                moveIndex = totalMoves;
+                isLive = true;
+            }
+            buildMoveScroller();
+            updatePlayerBars(lastBoardData);
+            startPolling();
+        }
+
+        function formatDate(timestamp) {
+            if (!timestamp || timestamp <= 0) return 'Unknown date';
+            const d = new Date(timestamp * 1000);
+            return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear() + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+        }
+
+        function formatWinner(winnerColor, result) {
+            if (winnerColor === 'w') return '<span class="winner-square white-square"></span> White wins';
+            if (winnerColor === 'b') return '<span class="winner-square black-square"></span> Black wins';
+            if (winnerColor === 'd') return 'Draw';
+            return RESULT_NAMES[result] || 'Unknown';
+        }
+
+        function formatWinnerCard(winnerChar) {
+            if (winnerChar === 'w') return '<span class="winner-square white-square"></span> White wins';
+            if (winnerChar === 'b') return '<span class="winner-square black-square"></span> Black wins';
+            if (winnerChar === 'd') return '\u00bd Draw';
+            return '-';
+        }
+
+        function formatOpponent(meta) {
+            if (meta.isPgn) return 'PGN Import';
+            if (meta.mode === 2) {
+                return 'vs Stockfish (' + (DEPTH_NAMES[meta.botDepth] || ('Depth ' + meta.botDepth)) + ') as ' + (meta.playerColor === 'w' ? 'White' : 'Black');
+            }
+            if (meta.mode === 1 && meta.timeMinutes > 0) return 'Human vs Human \u2022 ' + meta.timeMinutes + '+' + meta.timeIncrement;
+            return MODE_NAMES[meta.mode] || ('Mode ' + meta.mode);
+        }
+
+        function buildReviewPanel() {
+            const meta = reviewGameMeta;
+            const segments = reviewSegments;
+            if (!meta || !segments || segments.length === 0) return;
+            let metaHtml = '<div class="review-meta-info">';
+            metaHtml += '<span class="meta-date">' + (meta.isPgn ? 'PGN Import' : formatDate(meta.timestamp)) + '</span>';
+            metaHtml += '<span class="meta-mode">' + formatOpponent(meta) + '</span>';
+            const result = RESULT_NAMES[meta.result] || 'Unknown';
+            const winner = formatWinner(meta.winnerColor, meta.result);
+            metaHtml += '<span class="meta-result">' + (meta.winnerColor === 'd' ? result : winner + ' - ' + result) + '</span>';
+            metaHtml += '</div>';
+            $('#reviewMeta').html(metaHtml);
+
+            let movesHtml = '';
+            var hasAnalysis = Object.keys(reviewAnalysis).length > 0;
+            for (let s = 0; s < segments.length; s++) {
+                const seg = segments[s];
+                const hist = seg.engine.history({ verbose: true });
+                if (s > 0) movesHtml += '<div class="board-edit-marker" data-gidx="' + seg.globalOffset + '">\u270f\ufe0f Board Edit #' + s + '</div>';
+                if (hist.length === 0) continue;
+                const fenParts = seg.fen.split(' ');
+                let moveNum = parseInt(fenParts[5]) || 1;
+                let isWhiteTurn = ((fenParts[1] || 'w') === 'w');
+                movesHtml += '<div class="pgn-segment">';
+                for (let m = 0; m < hist.length; m++) {
+                    const globalIdx = seg.globalOffset + 1 + m;
+                    const moveColor = hist[m].color || (isWhiteTurn ? 'w' : 'b');
+                    const ann = getMoveAnnotation(globalIdx, moveColor);
+                    var moveCls = hasAnalysis ? getMoveClassForPgn(globalIdx, moveColor) : '';
+                    if (isWhiteTurn) {
+                        movesHtml += '<span class="pgn-move-num">' + moveNum + '.</span>';
+                        movesHtml += '<span class="pgn-move ' + moveCls + '" data-gidx="' + globalIdx + '">' + hist[m].san + ann + '</span>';
+                        isWhiteTurn = false;
+                    } else {
+                        if (m === 0) {
+                            movesHtml += '<span class="pgn-move-num">' + moveNum + '.</span>';
+                            movesHtml += '<span class="pgn-move-empty"></span>';
+                        }
+                        movesHtml += '<span class="pgn-move ' + moveCls + '" data-gidx="' + globalIdx + '">' + hist[m].san + ann + '</span>';
+                        isWhiteTurn = true;
+                        moveNum++;
+                    }
+                }
+                movesHtml += '</div>';
+            }
+            if (!meta.isPgn) {
+                if (meta.result === 1 || meta.result === 7 || meta.result === 8) {
+                    movesHtml += '<span class="pgn-result">' + (meta.winnerColor === 'w' ? '1-0' : '0-1') + '</span>';
+                } else if (meta.result >= 2 && meta.result <= 6) {
+                    movesHtml += '<span class="pgn-result">\u00bd-\u00bd</span>';
+                }
+            }
+            $('#reviewMoves').html(movesHtml);
+            $('#reviewMoves').off('click', '[data-gidx]').on('click', '[data-gidx]', function() {
+                const gidx = parseInt($(this).data('gidx'));
+                if (!isNaN(gidx)) navigateToMove(gidx);
+            });
+        }
+
+        function highlightReviewMove() {
+            $('#reviewMoves .pgn-move, #reviewMoves .board-edit-marker').removeClass('active');
+            if (reviewMoveIndex >= 0) {
+                const el = $('#reviewMoves [data-gidx="' + reviewMoveIndex + '"]');
+                el.addClass('active');
+                if (el[0]) el[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+
+        /* ═══════════ Game Analysis ═══════════ */
+        function resetReviewPanel() {
+            document.getElementById('accWhite').textContent = '–';
+            document.getElementById('accBlack').textContent = '–';
+            var categories = ['brilliant','great','book','best','excellent','good','inaccuracy','mistake','miss','blunder'];
+            categories.forEach(function(c) {
+                document.getElementById('clW-' + c).textContent = '0';
+                document.getElementById('clB-' + c).textContent = '0';
+            });
+            var canvas = document.getElementById('evalGraph');
+            if (canvas) { var ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); }
+            var bestEl = document.getElementById('bestMoveInfo');
+            if (bestEl) bestEl.style.display = 'none';
+            var kpEl = document.getElementById('keyMoments');
+            if (kpEl) kpEl.innerHTML = '';
+            var phaseEl = document.getElementById('gamePhase');
+            if (phaseEl) phaseEl.textContent = '';
+            var currentMoveTextEl = document.getElementById('currentMoveText');
+            if (currentMoveTextEl) currentMoveTextEl.textContent = '';
+            var currentMoveEvalEl = document.getElementById('currentMoveEval');
+            if (currentMoveEvalEl) currentMoveEvalEl.textContent = '';
+        }
+
+        function classifyMoveDetailed(wpBefore, wpAfter, sideToMove) {
+            if (wpBefore == null || wpAfter == null) return 'good';
+            var wpLoss = sideToMove === 'w' ? (wpBefore - wpAfter) : (wpAfter - wpBefore);
+            if (wpLoss < -8) return 'brilliant';
+            if (wpLoss < -2) return 'great';
+            if (wpLoss <= 2) return 'best';
+            if (wpLoss <= 5) return 'excellent';
+            if (wpLoss <= 8) return 'good';
+            if (wpLoss <= 15) return 'inaccuracy';
+            if (wpLoss <= 25) return 'mistake';
+            if (wpLoss > 25) {
+                var wasWinning = (sideToMove === 'w' && wpBefore > 80) || (sideToMove === 'b' && wpBefore < 20);
+                if (wasWinning) return 'miss';
+                return 'blunder';
+            }
+            return 'good';
+        }
+
+        function computeAccuracy(wpLosses) {
+            if (!wpLosses.length) return 0;
+            var total = 0;
+            for (var i = 0; i < wpLosses.length; i++) {
+                total += Math.min(100, Math.max(0, 103.1668 * Math.exp(-0.04354 * Math.abs(wpLosses[i])) - 3.1668));
+            }
+            return (total / wpLosses.length).toFixed(1);
+        }
+
+        function detectGamePhase(moveIdx, totalMoves) {
+            var pct = totalMoves > 0 ? moveIdx / totalMoves : 0;
+            if (pct <= 0.2) return 'Opening';
+            if (pct <= 0.65) return 'Middlegame';
+            return 'Endgame';
+        }
+
+        function findKeyMoments(analysis, segments) {
+            var moments = [];
+            if (!segments || !segments.length) return moments;
+            for (var s = 0; s < segments.length; s++) {
+                var seg = segments[s];
+                var hist = seg.engine.history({ verbose: true });
+                var fenParts = seg.fen.split(' ');
+                var isWhite = (fenParts[1] || 'w') === 'w';
+                for (var m = 0; m < hist.length; m++) {
+                    var gIdx = seg.globalOffset + 1 + m;
+                    var prevA = analysis[gIdx - 1], currA = analysis[gIdx];
+                    if (prevA && currA) {
+                        var wpB = cpToWinPct(prevA.evaluation, prevA.mate);
+                        var wpA = cpToWinPct(currA.evaluation, currA.mate);
+                        var swing = Math.abs(wpA - wpB);
+                        if (swing >= 20) {
+                            var side = isWhite ? 'w' : 'b';
+                            var wpLoss = side === 'w' ? (wpB - wpA) : (wpA - wpB);
+                            moments.push({ idx: gIdx, san: hist[m].san, swing: swing, side: side, isError: wpLoss > 15 });
+                        }
+                    }
+                    isWhite = !isWhite;
+                }
+            }
+            moments.sort(function(a,b) { return b.swing - a.swing; });
+            return moments.slice(0, 5);
+        }
+
+        function drawEvalGraph(analysis, totalMoves) {
+            var canvas = document.getElementById('evalGraph');
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            ctx.clearRect(0, 0, w, h);
+            var mid = h / 2;
+            // Background halves
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            ctx.fillRect(0, 0, w, mid);
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.fillRect(0, mid, w, mid);
+            // Center line
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+            ctx.setLineDash([]);
+            if (totalMoves < 2) return;
+            var points = [];
+            for (var i = 0; i <= totalMoves; i++) {
+                var a = analysis[i];
+                var ev = 0;
+                if (a) ev = a.mate != null ? (a.mate > 0 ? 10 : -10) : Math.max(-10, Math.min(10, a.evaluation || 0));
+                var x = (i / totalMoves) * w;
+                var y = mid - (ev / 10) * (mid - 6);
+                points.push({x: x, y: y, ev: ev, idx: i});
+            }
+            // White advantage fill (above center)
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, mid);
+            for (var i = 0; i < points.length; i++) {
+                var py = Math.min(points[i].y, mid);
+                ctx.lineTo(points[i].x, py);
+            }
+            ctx.lineTo(points[points.length-1].x, mid);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.fill();
+            // Black advantage fill (below center)
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, mid);
+            for (var i = 0; i < points.length; i++) {
+                var py = Math.max(points[i].y, mid);
+                ctx.lineTo(points[i].x, py);
+            }
+            ctx.lineTo(points[points.length-1].x, mid);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.fill();
+            // Main line
+            ctx.beginPath();
+            for (var i = 0; i < points.length; i++) {
+                if (i === 0) ctx.moveTo(points[i].x, points[i].y);
+                else ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.strokeStyle = 'rgba(0,229,255,0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // Turning point markers
+            for (var i = 1; i < points.length - 1; i++) {
+                var prev = points[i-1].ev, curr = points[i].ev, next = points[i+1].ev;
+                if (Math.abs(curr - prev) > 2 || Math.abs(curr - next) > 2) {
+                    ctx.beginPath();
+                    ctx.arc(points[i].x, points[i].y, 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = curr > 0 ? '#e8e8e8' : '#444';
+                    ctx.strokeStyle = 'rgba(0,229,255,0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.fill(); ctx.stroke();
+                }
+            }
+            // Store points for tooltip
+            canvas._evalPoints = points;
+        }
+
+        function setupEvalGraphTooltip() {
+            var canvas = document.getElementById('evalGraph');
+            if (!canvas) return;
+            var tip = document.getElementById('evalGraphTooltip');
+            if (!tip) return;
+            canvas.addEventListener('mousemove', function(e) {
+                if (!canvas._evalPoints || !canvas._evalPoints.length) { tip.style.display = 'none'; return; }
+                var rect = canvas.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var pts = canvas._evalPoints;
+                var closest = pts[0], minDist = 9999;
+                for (var i = 0; i < pts.length; i++) {
+                    var d = Math.abs(pts[i].x - mx);
+                    if (d < minDist) { minDist = d; closest = pts[i]; }
+                }
+                var evalStr = closest.ev > 9.5 ? 'M+' : closest.ev < -9.5 ? 'M-' : (closest.ev >= 0 ? '+' : '') + closest.ev.toFixed(1);
+                tip.textContent = 'Move ' + closest.idx + ': ' + evalStr;
+                tip.style.display = '';
+                var tipX = closest.x - tip.offsetWidth / 2;
+                tipX = Math.max(4, Math.min(tipX, rect.width - tip.offsetWidth - 4));
+                tip.style.left = tipX + 'px';
+                tip.style.top = (closest.y < 30 ? closest.y + 14 : closest.y - 24) + 'px';
+            });
+            canvas.addEventListener('mouseleave', function() { tip.style.display = 'none'; });
+            canvas.addEventListener('click', function(e) {
+                if (!canvas._evalPoints || !canvas._evalPoints.length || !reviewMode) return;
+                var rect = canvas.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var pts = canvas._evalPoints;
+                var closest = pts[0], minDist = 9999;
+                for (var i = 0; i < pts.length; i++) {
+                    var d = Math.abs(pts[i].x - mx);
+                    if (d < minDist) { minDist = d; closest = pts[i]; }
+                }
+                navigateToMove(closest.idx);
+            });
+        }
+
+        function updateReviewAnalytics() {
+            var segments = reviewSegments;
+            if (!segments || !segments.length) return;
+            var wLosses = [], bLosses = [];
+            var wCounts = {}, bCounts = {};
+            var categories = ['brilliant','great','book','best','excellent','good','inaccuracy','mistake','miss','blunder'];
+            categories.forEach(function(c) { wCounts[c] = 0; bCounts[c] = 0; });
+            for (var s = 0; s < segments.length; s++) {
+                var seg = segments[s];
+                var hist = seg.engine.history({ verbose: true });
+                var fenParts = seg.fen.split(' ');
+                var isWhite = (fenParts[1] || 'w') === 'w';
+                for (var m = 0; m < hist.length; m++) {
+                    var gIdx = seg.globalOffset + 1 + m;
+                    var prevA = reviewAnalysis[gIdx - 1];
+                    var currA = reviewAnalysis[gIdx];
+                    if (prevA && currA) {
+                        var side = isWhite ? 'w' : 'b';
+                        var wpB = getAnalysisWinChance(prevA);
+                        var wpA = getAnalysisWinChance(currA);
+                        if (wpB == null || wpA == null) {
+                            isWhite = !isWhite;
+                            continue;
+                        }
+                        var wpLoss = side === 'w' ? (wpB - wpA) : (wpA - wpB);
+                        var ann = classifyReviewedMove(gIdx, side);
+                        var cls = ann ? ann.key : classifyMoveDetailed(wpB, wpA, side);
+                        if (side === 'w') { wLosses.push(Math.max(0, wpLoss)); wCounts[cls] = (wCounts[cls] || 0) + 1; }
+                        else { bLosses.push(Math.max(0, wpLoss)); bCounts[cls] = (bCounts[cls] || 0) + 1; }
+                    }
+                    isWhite = !isWhite;
+                }
+            }
+            var accW = computeAccuracy(wLosses);
+            var accB = computeAccuracy(bLosses);
+            document.getElementById('accWhite').textContent = accW;
+            document.getElementById('accBlack').textContent = accB;
+            categories.forEach(function(c) {
+                document.getElementById('clW-' + c).textContent = wCounts[c] || 0;
+                document.getElementById('clB-' + c).textContent = bCounts[c] || 0;
+            });
+            // Key moments
+            var keyMoments = findKeyMoments(reviewAnalysis, segments);
+            var kpEl = document.getElementById('keyMoments');
+            if (kpEl) {
+                if (keyMoments.length > 0) {
+                    var html = '';
+                    keyMoments.forEach(function(km) {
+                        var cls = km.isError ? 'km-error' : 'km-swing';
+                        html += '<div class="key-moment ' + cls + '" data-gidx="' + km.idx + '">';
+                        html += '<span class="km-move">Move ' + km.idx + '</span>';
+                        html += '<span class="km-san">' + km.san + '</span>';
+                        html += '<span class="km-swing-val">±' + km.swing.toFixed(0) + '%</span>';
+                        html += '</div>';
+                    });
+                    kpEl.innerHTML = html;
+                    kpEl.querySelectorAll('.key-moment').forEach(function(el) {
+                        el.addEventListener('click', function() { navigateToMove(parseInt(el.dataset.gidx)); });
+                    });
+                } else { kpEl.innerHTML = ''; }
+            }
+            drawEvalGraph(reviewAnalysis, reviewTotalMoves);
+        }
+
+        async function analyzeGame() {
+            if (!reviewMode) return;
+            if (isAnalyzing) {
+                if (analyzeController) analyzeController.abort();
+                isAnalyzing = false;
+                $('#analyzeBtn').html('&#9733; Start Review');
+                $('#analyzeProgress').hide();
+                return;
+            }
+            var segments = reviewSegments;
+            if (!segments || segments.length === 0) return;
+            var positions = [];
+            for (var s = 0; s < segments.length; s++) {
+                var seg = segments[s];
+                positions.push({ globalIdx: seg.globalOffset, fen: seg.fen });
+                var hist = seg.engine.history({ verbose: true });
+                for (var m = 0; m < hist.length; m++) positions.push({ globalIdx: seg.globalOffset + 1 + m, fen: hist[m].after });
+            }
+            if (positions.length === 0) return;
+            isAnalyzing = true;
+            analyzeController = new AbortController();
+            reviewAnalysis = {};
+            $('#analyzeBtn').html('&#9632; Stop Analysis');
+            $('#analyzeProgress').show();
+            $('#analyzeProgressFill').css('width', '0%');
+            var total = positions.length;
+            for (var i = 0; i < positions.length; i++) {
+                if (!isAnalyzing) break;
+                try {
+                    var url = '/analysis?fen=' + encodeURIComponent(positions[i].fen) + '&depth=12';
+                    var resp = await fetch(url, { signal: analyzeController.signal });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    var json = await resp.json();
+                    if (json.success) {
+                        reviewAnalysis[positions[i].globalIdx] = {
+                            evaluation: typeof json.evaluation === 'number' ? json.evaluation : 0,
+                            mate: json.hasMate ? json.mate : null,
+                            winChance: typeof json.winChance === 'number' ? json.winChance : null,
+                            bestmove: json.bestmove || json.bestMove || null,
+                            san: json.san || null
+                        };
+                    }
+                } catch (err) {
+                    if (err.name === 'AbortError') break;
+                    reviewAnalysis[positions[i].globalIdx] = { evaluation: 0, mate: null, winChance: null, bestmove: null, san: null };
+                }
+                var pct = Math.round(((i + 1) / total) * 100);
+                $('#analyzeProgressFill').css('width', pct + '%');
+                $('#analyzeProgressText').text('Analyzing ' + (i + 1) + '/' + total + ' via chess-api.com');
+            }
+            isAnalyzing = false;
+            $('#analyzeBtn').html('&#9733; Re-analyze');
+            $('#analyzeProgress').hide();
+            document.getElementById('evalBarWrap').style.display = '';
+            updateReviewAnalytics();
+            buildReviewPanel();
+            highlightReviewMove();
+            updateEvalBarForCurrent();
+            setupEvalGraphTooltip();
+        }
+
+        /* ═══════════ PGN Loading ═══════════ */
+        function loadPGN(pgnText) {
+            pgnText = pgnText.replace(/^\uFEFF/, '');
+            // If multiple games, find the first one with moves
+            var sections = pgnText.split(/\n\n(?=\[)/);
+            if (sections.length > 1) pgnText = sections.slice(0, 2).join('\n\n');
+            // Extract result from headers
+            var headerResult = 0, headerWinner = '?';
+            var resultMatch = pgnText.match(/\[Result\s+"([^"]+)"\]/);
+            if (resultMatch) {
+                if (resultMatch[1] === '1-0') { headerResult = 1; headerWinner = 'w'; }
+                else if (resultMatch[1] === '0-1') { headerResult = 1; headerWinner = 'b'; }
+                else if (resultMatch[1] === '1/2-1/2') { headerResult = 5; headerWinner = 'd'; }
+            }
+            // Strip header tags
+            var moveText = pgnText.replace(/\[.*?\]\s*\n?/g, '').trim();
+            // Strip comments {..}
+            moveText = moveText.replace(/\{[^}]*\}/g, '');
+            // Strip NAGs ($1, $2, etc.)
+            moveText = moveText.replace(/\$\d+/g, '');
+            // Strip variations (nested parentheses)
+            var depth = 0, cleaned = '';
+            for (var i = 0; i < moveText.length; i++) {
+                if (moveText[i] === '(') depth++;
+                else if (moveText[i] === ')') { depth--; if (depth < 0) depth = 0; }
+                else if (depth === 0) cleaned += moveText[i];
+            }
+            moveText = cleaned;
+            // Strip clock annotations [%clk ...] [%eval ...]
+            moveText = moveText.replace(/\[%[^\]]*\]/g, '');
+            // Strip result at end
+            moveText = moveText.replace(/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/, '');
+            // Normalize whitespace
+            moveText = moveText.replace(/\s+/g, ' ').trim();
+            // Parse moves using chess.js
+            var engine = new Chess();
+            var tokens = moveText.split(/\s+/);
+            for (var t = 0; t < tokens.length; t++) {
+                var tok = tokens[t].replace(/^\d+\.{1,3}/, '').trim();
+                if (!tok || tok === '') continue;
+                try { var mv = engine.move(tok); if (!mv) continue; }
+                catch (e) { continue; }
+            }
+            var hist = engine.history({ verbose: true });
+            if (hist.length === 0) {
+                // Fallback: try chess.js native loadPgn
+                var engine2 = new Chess();
+                try {
+                    if (engine2.loadPgn(pgnText)) {
+                        hist = engine2.history({ verbose: true });
+                    }
+                } catch(e) {}
+            }
+            if (hist.length === 0) { alert('No valid moves found in the PGN.'); return; }
+            var moves = hist.map(function(m) { return m.from + m.to + (m.promotion || ''); });
+            var segment = createSegment(START_FEN, moves);
+            // Fallback result detection from move text
+            if (headerResult === 0 && headerWinner === '?') {
+                if (/1-0/.test(pgnText)) { headerResult = 1; headerWinner = 'w'; }
+                else if (/0-1/.test(pgnText)) { headerResult = 1; headerWinner = 'b'; }
+                else if (/1\/2-1\/2/.test(pgnText)) { headerResult = 5; headerWinner = 'd'; }
+            }
+            var meta = { mode: 0, result: headerResult, winnerColor: headerWinner, timestamp: Math.floor(Date.now() / 1000), gameId: 'pgn', isPgn: true, moveCount: hist.length };
+            reviewAnalysis = {};
+            $('#gameSelectorOverlay').removeClass('visible');
+            enterReviewMode([segment], meta);
+        }
+
+        /* ═══════════ Game Selector ═══════════ */
+        async function loadGameList() {
+            try { const resp = await fetch('/games'); const data = await resp.json(); return data.games || []; }
+            catch (e) { return []; }
+        }
+
+        function openGameSelector() {
+            loadGameList().then(games => {
+                const grid = $('#gameGrid');
+                grid.empty();
+                if (games.length === 0) { $('#noGamesMsg').show(); grid.hide(); }
+                else {
+                    $('#noGamesMsg').hide(); grid.show();
+                    games.sort((a, b) => {
+                        if (!!a.live !== !!b.live) return a.live ? -1 : 1;
+                        return (b.timestamp || 0) - (a.timestamp || 0);
+                    });
+                    games.forEach(game => {
+                        const date = game.live ? 'In progress' : formatDate(game.timestamp);
+                        let subtitle = MODE_NAMES[game.mode] || 'Game';
+                        let state = game.live ? 'Resume / review current board' : formatWinnerCard(game.winner);
+                        if (game.mode === 2) subtitle = 'vs Stockfish (' + (DEPTH_NAMES[game.botDepth] || 'D' + game.botDepth) + ')';
+                        else if (game.mode === 1 && game.timeMinutes > 0) subtitle = 'Human vs Human \u2022 ' + game.timeMinutes + '+' + game.timeIncrement;
+                        const card = $('<div class="game-card' + (game.live ? ' game-card-live' : '') + '" data-id="' + game.id + '" data-deletable="' + (game.live ? '0' : '1') + '"></div>');
+                        card.html(
+                            '<span class="game-card-check"><span class="check-icon"></span></span>' +
+                            (game.live ? '<span class="game-card-badge">LIVE</span>' : '') +
+                            '<div class="game-card-date">' + date + '</div>' +
+                            '<div class="game-card-mode">' + subtitle + '</div>' +
+                            '<div class="game-card-result">' + state + '</div>' +
+                            '<div class="game-card-moves">' + game.moveCount + ' moves</div>'
+                        );
+                        grid.append(card);
+                    });
+                }
+                $('#gameSelectorOverlay').addClass('visible');
+                deleteMode = false;
+                $('#deleteToggleBtn').removeClass('active');
+                $('#gameGrid').removeClass('delete-mode');
+                $('.game-card').removeClass('selected-for-delete');
+                $('#deleteConfirmBar').hide();
+            });
+        }
+
+        async function selectGameFromHistory(gameId) {
+            try {
+                let parsed;
+                if (String(gameId) === 'live') {
+                    const [movesResp, fenResp] = await Promise.all([fetch('/games?id=live1'), fetch('/games?id=live2')]);
+                    if (!movesResp.ok) { alert('Failed to load live game'); return; }
+                    const movesBuffer = await movesResp.arrayBuffer();
+                    const fenBuffer = fenResp.ok ? await fenResp.arrayBuffer() : new ArrayBuffer(0);
+                    parsed = parseLiveGame(movesBuffer, fenBuffer);
+                } else {
+                    const resp = await fetch('/games?id=' + gameId);
+                    if (!resp.ok) { alert('Failed to load game'); return; }
+                    const buffer = await resp.arrayBuffer();
+                    parsed = parseCompletedGame(buffer);
+                }
+                const segments = buildGameSegments(parsed);
+                const meta = parsed.header;
+                meta.gameId = gameId;
+                meta.live = (String(gameId) === 'live');
+                $('#gameSelectorOverlay').removeClass('visible');
+                enterReviewMode(segments, meta);
+            } catch (e) { alert('Error loading game data'); }
+        }
+
+        /* ═══════════ Polling ═══════════ */
+        function fetchBoardState() {
+            if (reviewMode || !board) return;
+            fetch('/board-update')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.fen) {
+                        if (liveSegments.length > 0) {
+                            const lastSeg = liveSegments[liveSegments.length - 1];
+                            const serverPosFen = data.fen.split(' ')[0];
+                            const engineFen = lastSeg.engine.fen().split(' ')[0];
+                            if (serverPosFen !== engineFen) {
+                                const legalMoves = lastSeg.engine.moves({ verbose: true });
+                                let foundMove = false;
+                                for (const m of legalMoves) {
+                                    if (m.after.split(' ')[0] === serverPosFen) {
+                                        lastSeg.engine.move(m.san);
+                                        lastSeg.moveCount = lastSeg.engine.history().length;
+                                        computeSegmentOffsets(liveSegments);
+                                        totalMoves = computeGlobalTotal(liveSegments);
+                                        if (isLive) moveIndex = totalMoves;
+                                        foundMove = true;
+                                        break;
+                                    }
+                                }
+                                if (!foundMove) {
+                                    try {
+                                        const newEngine = new Chess(data.fen);
+                                        liveSegments.push({ fen: data.fen, engine: newEngine, moveCount: 0, globalOffset: 0, span: 0 });
+                                        computeSegmentOffsets(liveSegments);
+                                        totalMoves = computeGlobalTotal(liveSegments);
+                                        moveIndex = totalMoves;
+                                        isLive = true;
+                                    } catch (e) { console.log('Failed to create new segment:', e); }
+                                }
+                                buildMoveScroller();
+                            }
+                        } else {
+                            try {
+                                const engine = new Chess(data.fen);
+                                liveSegments.push({ fen: data.fen, engine: engine, moveCount: 0, globalOffset: 0, span: 1 });
+                                computeSegmentOffsets(liveSegments);
+                                totalMoves = computeGlobalTotal(liveSegments);
+                                moveIndex = 0;
+                                isLive = true;
+                                buildMoveScroller();
+                            } catch (e) { console.log('Failed to init segments:', e); }
+                        }
+                        if (isLive) { currentDisplayedFen = data.fen; parseFullFen(data.fen); }
+                    }
+                    if (data.gameOver !== undefined) {
+                        const wasOver = window._boardGameOver || false;
+                        window._boardGameOver = data.gameOver;
+                        if (data.gameOver && !wasOver) {
+                            // Game just ended: disable draw/resign, show review option
+                            $('#resignBtn, #drawBtn').css('opacity','0.4').css('pointer-events','none');
+                        } else if (!data.gameOver && wasOver) {
+                            // New game started: restore draw/resign
+                            $('#resignBtn, #drawBtn').css('opacity','').css('pointer-events','');
+                            document.getElementById('liveGameActions').style.display = '';
+                            document.getElementById('reviewGameActions').style.display = 'none';
+                        }
+                    }
+                    if (data.mode !== undefined) { window._boardMode = data.mode; currentMode = data.mode; }
+                    updateLiveStatusChips(data);
+                    updatePlayerBars(data);
+                    if (data.evaluation !== undefined && !reviewMode) {
+                        document.getElementById('evalBarWrap').style.display = '';
+                        updateEvalBar(data.evaluation, null);
+                    }
+                    if (data.promotion && !promotionPending && Date.now() > promotionCooldownUntil) showPromotionOverlay(data.promotion.color);
+                    else if (!data.promotion && promotionPending) hidePromotionOverlay();
+                })
+                .catch(error => console.log('Fetch failed:', error));
+        }
+
+        function startPolling() {
+            if (updateInterval) return;
+            fetchBoardState();
+            updateInterval = setInterval(fetchBoardState, 500);
+        }
+
+        function stopPolling() {
+            if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
+        }
+
+        /* ═══════════ WiFi ═══════════ */
+        function renderNetworkList(targetId, networks, type) {
+            const container = document.getElementById(targetId);
+            if (!networks || !networks.length) { container.innerHTML = '<div class="micro-copy">No networks available.</div>'; return; }
+            container.innerHTML = networks.map((net, i) => {
+                const detail = [];
+                if (net.rssi !== undefined) detail.push('RSSI ' + net.rssi);
+                if (net.channel !== undefined) detail.push('CH ' + net.channel);
+                const enc = encodeURIComponent(net.ssid);
+                const btns = type === 'saved'
+                    ? `<div class="toolbar-row"><button class="fen-btn" onclick="connectSaved(${i})" title="Connect">→</button><button class="fen-btn" onclick="deleteSaved(${i})" title="Delete">✕</button></div>`
+                    : `<div class="toolbar-row"><button class="fen-btn" onclick="connectScanned('${enc}')" title="Connect">→</button></div>`;
+                return `<div class="list-card"><div><strong>${net.ssid}</strong><span>${detail.join(' · ')}</span></div>${btns}</div>`;
+            }).join('');
+        }
+
+        async function loadWifi() {
+            try {
+                const data = await (await fetch('./wifi')).json();
+                setStatusDot('wifi', data.connected ? 'online' : 'warning', data.connected ? 'WiFi connected' : 'AP fallback');
+                document.getElementById('scanAllChannelsToggle').checked = !!data.scanAllChannels;
+                renderNetworkList('savedNetworks', data.saved || [], 'saved');
+                renderNetworkList('scannedNetworks', data.scanned || [], 'scanned');
+                document.getElementById('wifiStatus').textContent = data.connected ? 'Connected.' : 'AP mode or reconnecting.';
+            } catch (_) { document.getElementById('wifiStatus').textContent = 'Failed to load WiFi state.'; }
+        }
+
+        async function scanNetworks() {
+            document.getElementById('wifiStatus').textContent = 'Scanning…';
+            try { await postForm('./wifi', 'action=scan'); setTimeout(loadWifi, 1500); }
+            catch (e) { document.getElementById('wifiStatus').textContent = e.message; }
+        }
+        async function connectSaved(i) {
+            document.getElementById('wifiStatus').textContent = 'Connecting…';
+            try { await postForm('./wifi', 'action=connect&index=' + i); setTimeout(loadWifi, 1500); }
+            catch (e) { document.getElementById('wifiStatus').textContent = e.message; }
+        }
+        async function deleteSaved(i) {
+            if (!confirm('Delete this saved network?')) return;
+            try { await postForm('./wifi', 'action=delete&index=' + i); loadWifi(); }
+            catch (e) { document.getElementById('wifiStatus').textContent = e.message; }
+        }
+        async function connectScanned(enc) {
+            const ssid = decodeURIComponent(enc);
+            const password = prompt('Password for ' + ssid, '');
+            if (password === null) return;
+            try {
+                document.getElementById('wifiStatus').textContent = 'Connecting to ' + ssid + '…';
+                await postForm('./wifi', 'action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password));
+                setTimeout(loadWifi, 1500);
+            } catch (e) { document.getElementById('wifiStatus').textContent = e.message; }
+        }
+        async function connectManual() {
+            const ssid = document.getElementById('manualSsid').value.trim();
+            const pwd  = document.getElementById('manualPassword').value;
+            if (!ssid) { alert('Enter a network name.'); return; }
+            try {
+                document.getElementById('wifiStatus').textContent = 'Connecting to ' + ssid + '…';
+                await postForm('./wifi', 'action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pwd));
+                setTimeout(loadWifi, 1500);
+            } catch (e) { document.getElementById('wifiStatus').textContent = e.message; }
+        }
+
+        /* ═══════════ LED / HW Settings ═══════════ */
+        const LED_COLOR_FIELDS = [
+            ['playerWhite', 'ledColorPlayerWhite'],
+            ['playerBlack', 'ledColorPlayerBlack'],
+            ['modeHuman', 'ledColorModeHuman'],
+            ['modeOnline', 'ledColorModeOnline'],
+            ['modeSensor', 'ledColorModeSensor'],
+            ['modeStockfish', 'ledColorModeStockfish'],
+            ['gameStartEnd', 'ledColorGameStartEnd'],
+            ['confirm', 'ledColorConfirm'],
+            ['capture', 'ledColorCapture'],
+            ['check', 'ledColorCheck'],
+            ['checkSharpRed', 'ledColorCheckSharpRed'],
+            ['error', 'ledColorError'],
+            ['checkmateWave', 'ledColorCheckmateWave'],
+            ['checkmateWin', 'ledColorCheckmateWin'],
+            ['checkmateLose', 'ledColorCheckmateLose'],
+            ['draw', 'ledColorDraw'],
+            ['powerCyan', 'ledColorPowerCyan']
+        ];
+
+        async function loadBoardHWSettings() {
+            try {
+                const [smRes, bsRes, bleRes] = await Promise.all([fetch('./show-moves'), fetch('./board-settings'), fetch('./ble-status')]);
+                const sm = await smRes.json(), bs = await bsRes.json(), ble = await bleRes.json();
+                document.getElementById('showMovesToggle').checked = !!sm.showMoves;
+                document.getElementById('brightnessSlider').value = bs.brightness;
+                document.getElementById('dimSlider').value = bs.dimMultiplier;
+                document.getElementById('brightnessValue').textContent = bs.brightness;
+                document.getElementById('dimValue').textContent = bs.dimMultiplier + '%';
+                const colors = bs.colors || {};
+                LED_COLOR_FIELDS.forEach(([key, elementId]) => {
+                    if (colors[key]) {
+                        const input = document.getElementById(elementId);
+                        if (input) input.value = colors[key];
+                    }
+                });
+                setStatusDot('ble', ble.connected ? 'connected' : 'waiting', ble.connected ? 'Bluetooth connected' : 'Bluetooth waiting');
+                document.getElementById('ledStatus').textContent = 'Lighting settings synced.';
+            } catch (_) { document.getElementById('ledStatus').textContent = 'Failed to load lighting settings.'; }
+        }
+
+        async function saveLedSettings() {
+            const b = document.getElementById('brightnessSlider').value;
+            const d = document.getElementById('dimSlider').value;
+            const payloadParts = [
+                'brightness=' + encodeURIComponent(b),
+                'dimMultiplier=' + encodeURIComponent(d)
+            ];
+            LED_COLOR_FIELDS.forEach(([key, elementId]) => {
+                const input = document.getElementById(elementId);
+                if (!input) return;
+                payloadParts.push('color' + key.charAt(0).toUpperCase() + key.slice(1) + '=' + encodeURIComponent(input.value));
+            });
+            const payload = payloadParts.join('&');
+            try {
+                document.getElementById('ledStatus').textContent = 'Saving…';
+                await postForm('./board-settings', payload);
+                document.getElementById('ledStatus').textContent = 'Lighting settings saved.';
+            } catch (e) { document.getElementById('ledStatus').textContent = e.message; }
+        }
+
+        async function resetLedColors() {
+            if (!confirm('Reset LED piece and animation colors to defaults?')) return;
+            try {
+                document.getElementById('ledStatus').textContent = 'Resetting colors…';
+                await postForm('./board-settings', 'resetColors=1');
+                await loadBoardHWSettings();
+                document.getElementById('ledStatus').textContent = 'LED colors reset to defaults.';
+            } catch (e) {
+                document.getElementById('ledStatus').textContent = e.message;
+            }
+        }
+
+        /* ═══════════ OTA ═══════════ */
+        async function loadOtaStatus() {
+            try {
+                const res = await fetch('./ota/status');
+                if (!res.ok) { document.getElementById('otaStatus').textContent = 'No update info available.'; return; }
+                const data = await res.json();
+                document.getElementById('autoUpdateToggle').checked = !!data.autoUpdate;
+                document.getElementById('firmwareVersion').textContent = data.version || '--';
+                document.getElementById('latestVersion').textContent = data.latestVersion || '--';
+                document.getElementById('updateState').textContent = data.available ? 'Ready' : 'Current';
+                document.getElementById('applyUpdateBtn').disabled = !data.available;
+                document.getElementById('otaStatus').textContent = data.available ? 'Update available.' : 'Firmware is current.';
+            } catch (_) { document.getElementById('otaStatus').textContent = 'Failed to load OTA status.'; }
+        }
+
+        async function applyUpdate() {
+            if (!confirm('Apply the pending OTA update now? The board will reboot.')) return;
+            try {
+                document.getElementById('otaStatus').textContent = 'Applying update…';
+                await postForm('./ota/apply', 'apply=1');
+                document.getElementById('otaStatus').textContent = 'Update started. Board will reboot when complete.';
+            } catch (e) { document.getElementById('otaStatus').textContent = e.message; }
+        }
+
+        /* ═══════════ Hardware Map ═══════════ */
+        async function loadHardwareSummary() {
+            try {
+                const data = await (await fetch('./hardware-config')).json();
+                const rows = [
+                    { label: 'LED pin', value: data.ledPin }, { label: 'Shift clock', value: data.srClkPin },
+                    { label: 'Shift latch', value: data.srLatchPin }, { label: 'Shift data', value: data.srDataPin },
+                    { label: 'Row pins', value: (data.rowPins || []).join(', ') }
+                ];
+                document.getElementById('hardwareSummary').innerHTML =
+                    rows.map(r => `<div class="list-card"><div><strong>${r.label}</strong><span>${r.value}</span></div></div>`).join('');
+            } catch (_) { document.getElementById('hardwareSummary').innerHTML = '<div class="micro-copy">Failed to load hardware config.</div>'; }
+        }
+
+        /* ═══════════ Logs ═══════════ */
+        async function refreshLogs() {
+            try {
+                const res = await fetch('./log');
+                if (!res.ok) { document.getElementById('logsContainer').textContent = 'Logs unavailable.'; return; }
+                const text = await res.text();
+                const el = document.getElementById('logsContainer');
+                el.textContent = text || '(no logs)';
+                el.scrollTop = el.scrollHeight;
+            } catch (_) { document.getElementById('logsContainer').textContent = 'Failed to load logs.'; }
+        }
+        async function clearLogs() {
+            try { await postForm('./log', 'action=clear'); document.getElementById('logsContainer').textContent = '(cleared)'; } catch (_) {}
+        }
+
+        /* ═══════════ Event Wiring ═══════════ */
+        document.querySelectorAll('.tab-btn').forEach(btn =>
+            btn.addEventListener('click', () => showTab(btn.dataset.tab)));
+
+        bindToggleGroup('playerColorGroup', v => { selectedPlayerColor = v; });
+        bindToggleGroup('difficultyGroup',  v => { selectedDifficulty = v; });
+        bindToggleGroup('timeControlGroup', v => {
+            hvhTimeEnabled = (v === 'on');
+            document.getElementById('timePresetsSection').style.display = hvhTimeEnabled ? '' : 'none';
+        });
+
+        document.querySelectorAll('.time-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.time-preset').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const [m, i] = btn.dataset.value.split('+').map(Number);
+                hvhTimeMinutes = m;
+                hvhTimeIncrement = i;
+            });
+        });
+
+        document.getElementById('scanAllChannelsToggle').addEventListener('change', async e => {
+            try { await postForm('./wifi', 'scanAllChannels=' + (e.target.checked ? '1' : '0')); loadWifi(); }
+            catch (err) { document.getElementById('wifiStatus').textContent = err.message; }
+        });
+        document.getElementById('showMovesToggle').addEventListener('change', async e => {
+            try { await postForm('./show-moves', 'enabled=' + (e.target.checked ? '1' : '0'));
+                document.getElementById('ledStatus').textContent = 'Valid move LED setting saved.'; }
+            catch (err) { document.getElementById('ledStatus').textContent = err.message; }
+        });
+        document.getElementById('autoUpdateToggle').addEventListener('change', async e => {
+            try { await postForm('./ota/settings', 'autoUpdate=' + (e.target.checked ? '1' : '0'));
+                document.getElementById('otaStatus').textContent = 'OTA preference saved.'; }
+            catch (err) { document.getElementById('otaStatus').textContent = err.message; }
+        });
+        document.getElementById('brightnessSlider').addEventListener('input', e => {
+            document.getElementById('brightnessValue').textContent = e.target.value;
+        });
+        document.getElementById('dimSlider').addEventListener('input', e => {
+            document.getElementById('dimValue').textContent = e.target.value + '%';
+        });
+
+        /* ═══════════ Board Tab Event Wiring (jQuery) ═══════════ */
+        let deleteMode = false;
+
+        $(function() {
+            // Resign
+            $('#resignBtn').on('click', function() {
+                if (reviewMode) return;
+                const colorName = currentTurn === 'w' ? 'White' : 'Black';
+                if (!confirm(colorName + ' resigns. Are you sure?')) return;
+                fetch('/resign', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'color=' + encodeURIComponent(currentTurn) })
+                    .then(r => { if (!r.ok) alert('Failed to resign'); }).catch(() => alert('Network error'));
+            });
+
+            // Draw
+            $('#drawBtn').on('click', function() {
+                if (reviewMode) return;
+                if (!confirm('Agree to a draw?')) return;
+                fetch('/draw', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '' })
+                    .then(r => { if (!r.ok) alert('Failed to offer draw'); }).catch(() => alert('Network error'));
+            });
+
+            // Flip board
+            $('#flipBtn').on('click', function() {
+                boardOrientation = boardOrientation === 'white' ? 'black' : 'white';
+                if (board) board.orientation(boardOrientation);
+                $('#settingFlip').prop('checked', boardOrientation === 'black');
+                updatePlayerBars(lastBoardData);
+            });
+
+            // Keyboard navigation
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    if ($('#boardSettingsPopup').hasClass('visible')) { $('#boardSettingsPopup').removeClass('visible'); }
+                    else if ($('#gameSelectorOverlay').hasClass('visible')) { exitDeleteMode(); $('#gameSelectorOverlay').removeClass('visible'); }
+                    else if (reviewMode) { exitReviewMode(); }
+                    return;
+                }
+                // Only handle arrow keys when board tab is active
+                if (!document.getElementById('tab-board').classList.contains('active')) return;
+                if (e.key === 'ArrowLeft') { e.preventDefault(); navPrev(); }
+                else if (e.key === 'ArrowRight') { e.preventDefault(); navNext(); }
+                else if (e.key === 'Home') { e.preventDefault(); navFirst(); }
+                else if (e.key === 'End') { e.preventDefault(); navLast(); }
+            });
+
+            // Game selector
+            $('#gameSelectorBtn').on('click', openGameSelector);
+            $('#closeGameSelector').on('click', function() { exitDeleteMode(); $('#gameSelectorOverlay').removeClass('visible'); });
+            $('#gameSelectorOverlay').on('click', function(e) { if (e.target === this) { exitDeleteMode(); $(this).removeClass('visible'); } });
+
+            // Delete mode
+            function exitDeleteMode() {
+                deleteMode = false;
+                $('#deleteToggleBtn').removeClass('active');
+                $('#gameGrid').removeClass('delete-mode');
+                $('.game-card').removeClass('selected-for-delete');
+                $('#deleteConfirmBar').slideUp(150);
+            }
+
+            function updateDeleteConfirmBar() {
+                const count = $('.game-card.selected-for-delete').length;
+                if (count > 0) { $('#deleteConfirmText').text('Delete ' + count + ' selected game' + (count > 1 ? 's' : '') + '?'); $('#deleteConfirmBar').slideDown(150); }
+                else { $('#deleteConfirmBar').slideUp(150); }
+            }
+
+            $('#deleteToggleBtn').on('click', function() {
+                deleteMode = !deleteMode;
+                $(this).toggleClass('active');
+                $('#gameGrid').toggleClass('delete-mode', deleteMode);
+                if (!deleteMode) { $('.game-card').removeClass('selected-for-delete'); $('#deleteConfirmBar').slideUp(150); }
+            });
+
+            $(document).on('click', '.game-card', function() {
+                const gameId = $(this).data('id');
+                if (deleteMode) {
+                    if ($(this).data('deletable') !== 1) return;
+                    $(this).toggleClass('selected-for-delete');
+                    updateDeleteConfirmBar();
+                }
+                else { selectGameFromHistory(gameId); }
+            });
+
+            $('#deleteConfirmNo').on('click', exitDeleteMode);
+
+            $('#deleteConfirmYes').on('click', function() {
+                const selected = $('.game-card.selected-for-delete');
+                if (selected.length === 0) return;
+                const ids = [];
+                selected.each(function() { ids.push($(this).data('id')); });
+                let chain = Promise.resolve();
+                ids.forEach(id => {
+                    chain = chain.then(() => fetch('/games?id=' + id, { method: 'DELETE' }).then(resp => {
+                        if (!resp.ok) console.log('Failed to delete game ' + id);
+                        if (reviewMode && reviewGameMeta && reviewGameMeta.gameId === id) exitReviewMode();
+                    }));
+                });
+                chain.then(() => { exitDeleteMode(); openGameSelector(); }).catch(() => alert('Network error while deleting games'));
+            });
+
+            // Exit review mode
+            $('#exitReviewBtn').on('click', exitReviewMode);
+            $('#analyzeBtn').on('click', analyzeGame);
+            // Game Review button in footer (only visible in review mode)
+            $('#gameReviewBtn').on('click', function() {
+                if (!reviewMode) return;
+                var panel = document.getElementById('reviewSideCol');
+                if (panel.style.display === 'none') panel.style.display = '';
+                else panel.style.display = 'none';
+            });
+
+            // PGN
+            $('#pgnToggleBtn').on('click', function() { $('#pgnArea').toggle(); });
+            $('#pgnLoadBtn').on('click', function() {
+                const pgnText = $('#pgnInput').val().trim();
+                if (!pgnText) { alert('Please paste a PGN first.'); return; }
+                loadPGN(pgnText);
+            });
+
+            // Board settings popup
+            $('#boardSettingsBtn').on('click', function() { $('#boardSettingsPopup').addClass('visible'); });
+            $('#closeBoardSettings').on('click', function() { $('#boardSettingsPopup').removeClass('visible'); });
+            $('#boardSettingsPopup').on('click', function(e) { if (e.target === this) $(this).removeClass('visible'); });
+
+            $('#settingNotation').on('change', function() { boardSettings.showNotation = this.checked; saveBoardVisualSettings(); rebuildBoard(); });
+            $('#settingFlip').on('change', function() {
+                boardOrientation = this.checked ? 'black' : 'white';
+                if (board) board.orientation(boardOrientation);
+                updatePlayerBars(lastBoardData);
+            });
+            $('#settingSound').on('change', function() { boardSettings.playSound = this.checked; saveBoardVisualSettings(); });
+            $('#settingLightColor').on('input', function() { boardSettings.lightSquareColor = this.value; saveBoardVisualSettings(); });
+            $('#settingDarkColor').on('input', function() { boardSettings.darkSquareColor = this.value; saveBoardVisualSettings(); });
+            $('#resetColorsBtn').on('click', function() { boardSettings.lightSquareColor = '#f0d9b5'; boardSettings.darkSquareColor = '#0ABAB5'; saveBoardVisualSettings(); });
+            $('#settingPieceTheme').on('change', function() { boardSettings.pieceTheme = this.value; saveBoardVisualSettings(); rebuildBoard(); updateThemeUI(); });
+            $('#deleteThemeBtn').on('click', function() {
+                const sv = $('#settingPieceTheme').val();
+                if (!defaultThemes.some(t => t.value === sv)) {
+                    if (confirm('Delete this custom theme?')) {
+                        boardSettings.customThemes = boardSettings.customThemes.filter(t => t.value !== sv);
+                        boardSettings.pieceTheme = defaultThemes[0].value;
+                        saveBoardVisualSettings(); rebuildBoard();
+                    }
+                }
+            });
+            $('#addThemeBtn').on('click', function() {
+                const themeUrl = prompt('Enter piece theme URL pattern:\n(Use {piece} as placeholder)');
+                if (themeUrl && themeUrl.includes('{piece}')) {
+                    const themeName = prompt('Enter a name for this theme:');
+                    if (themeName) {
+                        if (!boardSettings.customThemes) boardSettings.customThemes = [];
+                        boardSettings.customThemes.push({ value: themeUrl, label: themeName });
+                        boardSettings.pieceTheme = themeUrl;
+                        saveBoardVisualSettings(); rebuildBoard(); updateThemeUI();
+                    }
+                } else if (themeUrl) { alert('Theme URL must contain {piece} placeholder'); }
+            });
+        });
+
+        /* URL-param tab routing */
+        (function () {
+            const t = new URLSearchParams(window.location.search).get('tab')
+                || window.location.hash.replace('#', '');
+            if (t) showTab(t);
+        })();
+
+        /* Init */
+        Promise.all([loadWifi(), loadBoardHWSettings(), loadOtaStatus(), loadHardwareSummary()]);
+        refreshLogs();
     </script>
 </body>
 

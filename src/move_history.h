@@ -16,12 +16,14 @@ enum GameResult : uint8_t {
   RESULT_DRAW_3FOLD = 4,
   RESULT_DRAW_AGREEMENT = 5,
   RESULT_DRAW_INSUFFICIENT = 6,
-  RESULT_RESIGNATION = 7
+  RESULT_RESIGNATION = 7,
+  RESULT_TIMEOUT = 8
 };
 
 enum GameModeCode : uint8_t {
   GAME_MODE_CHESS_MOVES = 1,
-  GAME_MODE_BOT = 2
+  GAME_MODE_BOT = 2,
+  GAME_MODE_CONNECT = 3
 };
 
 struct __attribute__((packed)) GameHeader {

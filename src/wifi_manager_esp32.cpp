@@ -1,13 +1,15 @@
 #include "wifi_manager_esp32.h"
-#include "chess_lichess.h"
+#include "chess_engine.h"
 #include "chess_utils.h"
 #include "move_history.h"
 #include "version.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
 #include <Update.h>
 #include <esp_wifi.h>
+#include <WiFiClientSecure.h>
 
 static const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // Samsung captive portal detection is more reliable when SoftAP is not in RFC1918 ranges.
@@ -15,45 +17,117 @@ static const IPAddress AP_IP(200, 200, 200, 1);
 static const IPAddress AP_GATEWAY(200, 200, 200, 1);
 static const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), gameMode("0"), lichessToken(""), botConfig(), scanAllChannels(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), boardEvaluation(0.0f), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false) {
+static int hexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+  return -1;
+}
+
+static bool parseHexLedColor(const String& value, LedRGB& outColor) {
+  if (value.length() != 7 || value.charAt(0) != '#') return false;
+  int rHi = hexNibble(value.charAt(1));
+  int rLo = hexNibble(value.charAt(2));
+  int gHi = hexNibble(value.charAt(3));
+  int gLo = hexNibble(value.charAt(4));
+  int bHi = hexNibble(value.charAt(5));
+  int bLo = hexNibble(value.charAt(6));
+  if (rHi < 0 || rLo < 0 || gHi < 0 || gLo < 0 || bHi < 0 || bLo < 0) return false;
+  uint8_t r = (uint8_t)((rHi << 4) | rLo);
+  uint8_t g = (uint8_t)((gHi << 4) | gLo);
+  uint8_t b = (uint8_t)((bHi << 4) | bLo);
+  outColor = Internal::correct(r, g, b);
+  return true;
+}
+
+static String ledColorToHex(LedRGB color) {
+  char buffer[8];
+  uint8_t r = Internal::ungamma(color.r);
+  uint8_t g = Internal::ungamma(color.g);
+  uint8_t b = Internal::ungamma(color.b);
+  snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", r, g, b);
+  return String(buffer);
+}
+
+static float cpToWinChance(float evalPawns) {
+  float cp = evalPawns * 100.0f;
+  float logistic = 1.0f / (1.0f + expf(-0.00368208f * cp));
+  return logistic * 100.0f;
+}
+
+static void applySimulatedMove(char board[8][8], ChessEngine& engine, int fromRow, int fromCol, int toRow, int toCol) {
+  char piece = board[fromRow][fromCol];
+  bool isPawn = (toupper(piece) == 'P');
+  bool isKing = (toupper(piece) == 'K');
+  bool isCapture = (board[toRow][toCol] != ' ');
+
+  if (isPawn && fromCol != toCol && board[toRow][toCol] == ' ') {
+    int epRow = toRow + (ChessUtils::isWhitePiece(piece) ? 1 : -1);
+    if (epRow >= 0 && epRow < 8) board[epRow][toCol] = ' ';
+    isCapture = true;
+  }
+
+  board[toRow][toCol] = piece;
+  board[fromRow][fromCol] = ' ';
+
+  if (isKing && abs(toCol - fromCol) == 2) {
+    if (toCol > fromCol) {
+      board[fromRow][5] = board[fromRow][7];
+      board[fromRow][7] = ' ';
+    } else {
+      board[fromRow][3] = board[fromRow][0];
+      board[fromRow][0] = ' ';
+    }
+  }
+
+  if (isPawn && (toRow == 0 || toRow == 7)) {
+    board[toRow][toCol] = ChessUtils::isWhitePiece(piece) ? 'Q' : 'q';
+  }
+
+  engine.clearEnPassantTarget();
+  if (isPawn && abs(toRow - fromRow) == 2) {
+    int epRow = (fromRow + toRow) / 2;
+    engine.setEnPassantTarget(epRow, fromCol);
+  }
+  engine.updateHalfmoveClock(piece, isCapture ? 'x' : ' ');
+}
+
+WiFiManagerESP32::WiFiManagerESP32(BoardDriver* bd, MoveHistory* mh) : boardDriver(bd), moveHistory(mh), server(HTTP_PORT), gameMode("0"), showMoves(true), bleConnected(false), botConfig(), scanAllChannels(false), suppressConnectAnimation(false), profileCount(0), connectedProfileIndex(-1), scanResults(nullptr), scanResultCount(0), currentFen(INITIAL_FEN), boardEvaluation(0.0f), analysisInProgress(false), analysisCacheDepth(0), analysisCacheTimestamp(0), analysisCacheValid(false), hasPendingEdit(false), hasPendingResign(false), hasPendingDraw(false), pendingResignColor('?'), promotion{}, lastBoardPollTime(0), activeGameMode(0), gameIsOver(false), hasPendingHome(false), logMutex(nullptr), otaUpdater(bd), autoOtaEnabled(false), otaChecked(false), clockWhiteMs(0), clockBlackMs(0), clockRunning(false) {
   promotion.reset();
   pendingWiFi.reset();
 }
 
 void WiFiManagerESP32::begin() {
-  Serial.println("=== Starting OpenChess WiFi Manager ===");
+  Serial.println("=== Starting SeleniumChess WiFi Manager ===");
+  logMutex = xSemaphoreCreateMutex();
 
   if (ChessUtils::ensureNvsInitialized()) {
-    // Load WiFi profiles
     loadProfiles();
-    // Load Lichess token
-    prefs.begin("lichess", false);
-    if (prefs.isKey("token"))
-      lichessToken = prefs.getString("token", "");
+    prefs.begin("display", false);
+    showMoves = prefs.getBool("showMoves", true);
     prefs.end();
-    if (lichessToken.length() > 0)
-      Serial.println("Lichess API token loaded from NVS");
-    // Load OTA auto-update preference
+    Serial.printf("Show valid moves: %s\n", showMoves ? "on" : "off");
     prefs.begin("ota", false);
     autoOtaEnabled = prefs.getBool("autoUpdate", false);
     prefs.end();
   }
 
+  // Always start the AP so the board is accessible even if home WiFi fails
+  WiFi.mode(WIFI_AP_STA);
+  if (!WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET))
+    Serial.println("ERROR: Failed to configure AP IP settings!");
+  if (!WiFi.softAP(AP_SSID, AP_PASSWORD))
+    Serial.println("ERROR: Failed to create Access Point!");
+  startCaptivePortal();
+  Serial.println("AP always-on: SSID=" AP_SSID " IP=" + WiFi.softAPIP().toString());
+
   bool connected = connectToSavedProfile();
   Serial.println("==== WiFi Connection Information ====");
   if (connected) {
-    Serial.println("Connected to WiFi network:");
-    Serial.println("- SSID: " + profiles[0].ssid);
-    Serial.println("- Password: " + profiles[0].password);
-    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
+    Serial.println("STA connected: " + WiFi.localIP().toString());
+    Serial.println("AP also running: " + WiFi.softAPIP().toString());
   } else {
-    startAPFallback();
-    Serial.println("A WiFi Access Point was created:");
-    Serial.println("- SSID: " AP_SSID);
-    Serial.println("- Password: " AP_PASSWORD);
-    Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
-    Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
-    Serial.println("Configure WiFi credentials from WebUI to join your WiFi network");
+    Serial.println("AP-only mode: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
   }
   Serial.println("=====================================\n");
 
@@ -80,20 +154,70 @@ void WiFiManagerESP32::begin() {
   server.on("/success.txt", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
   // Apple
   server.on("/hotspot-detect.html", HTTP_GET, [sendCaptiveRedirect](AsyncWebServerRequest* request) { sendCaptiveRedirect(request); });
-  // Set up OpenChess web server routes
+  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest* request) { request->send(204); });
+  // Set up SeleniumChess web server routes
   server.on("/board-update", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getBoardUpdateJSON()); });
   server.on("/board-update", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardEditSuccess(request); });
+  server.on("/analysis", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleAnalysis(request); });
   server.on("/promotion", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handlePromotion(request); });
   server.on("/resign", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleResign(request); });
   server.on("/draw", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleDraw(request); });
   server.on("/wifi", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getWiFiInfoJSON()); });
   server.on("/wifi", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleConnectWiFi(request); });
   server.on("/gameselect", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleGameSelection(request); });
-  server.on("/lichess", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getLichessInfoJSON()); });
-  server.on("/lichess", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleSaveLichessToken(request); });
+  server.on("/show-moves", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    doc["showMoves"] = this->showMoves;
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+  });
+  server.on("/show-moves", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (request->hasArg("enabled")) {
+      bool val = request->arg("enabled") == "1";
+      this->setShowMoves(val);
+      request->send(200, "text/plain", "OK");
+    } else {
+      request->send(400, "text/plain", "Missing 'enabled' parameter");
+    }
+  });
+  server.on("/ble-status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    doc["connected"] = this->bleConnected;
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+  });
+  server.on("/home", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    this->hasPendingHome = true;
+    Serial.println("Home request received from web UI");
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/log", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    String result;
+    if (this->logMutex && xSemaphoreTake(this->logMutex, pdMS_TO_TICKS(100))) {
+      result = this->logBuffer;
+      this->logBuffer = "";
+      xSemaphoreGive(this->logMutex);
+    }
+    request->send(200, "text/plain", result);
+  });
+  server.on("/log", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (request->hasArg("action") && request->arg("action") == "clear") {
+      if (this->logMutex && xSemaphoreTake(this->logMutex, pdMS_TO_TICKS(100))) {
+        this->logBuffer = "";
+        xSemaphoreGive(this->logMutex);
+      }
+      request->send(200, "text/plain", "OK");
+      return;
+    }
+    if (request->hasArg("msg")) {
+      Serial.println("[WebUI] " + request->arg("msg"));
+    }
+    request->send(200, "text/plain", "OK");
+  });
   server.on("/board-settings", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getBoardSettingsJSON()); });
   server.on("/board-settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardSettings(request); });
-  server.on("/board-calibrate", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardCalibration(request); });
   server.on("/games", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleGamesRequest(request); });
   server.on("/games", HTTP_DELETE, [this](AsyncWebServerRequest* request) { this->handleDeleteGame(request); });
   server.on("/hardware-config", HTTP_GET, [this](AsyncWebServerRequest* request) { this->getHardwareConfigJSON(request); });
@@ -131,13 +255,218 @@ String WiFiManagerESP32::getBoardUpdateJSON() {
   JsonDocument doc;
   doc["fen"] = currentFen;
   doc["evaluation"] = serialized(String(boardEvaluation, 2));
+  doc["mode"] = activeGameMode;
+  doc["gameOver"] = gameIsOver;
+  doc["playerWhite"] = playerNameWhite;
+  doc["playerBlack"] = playerNameBlack;
+  int s1 = currentFen.indexOf(' ');
+  if (s1 >= 0 && s1 + 1 < (int)currentFen.length()) {
+    char turn = currentFen.charAt(s1 + 1);
+    if (turn == 'w' || turn == 'b')
+      doc["turn"] = String(turn);
+  }
+  int s2 = (s1 >= 0) ? currentFen.indexOf(' ', s1 + 1) : -1;
+  int s3 = (s2 >= 0) ? currentFen.indexOf(' ', s2 + 1) : -1;
+  int s4 = (s3 >= 0) ? currentFen.indexOf(' ', s3 + 1) : -1;
+  if (s4 >= 0 && s4 + 1 < (int)currentFen.length()) {
+    String fullmoveStr = currentFen.substring(s4 + 1);
+    fullmoveStr.trim();
+    int fullmove = fullmoveStr.toInt();
+    if (fullmove > 0)
+      doc["moveCount"] = fullmove;
+  }
   if (promotion.pending) {
     JsonObject promo = doc["promotion"].to<JsonObject>();
     promo["color"] = String(promotion.color);
   }
+  if (clockRunning || (clockWhiteMs > 0 && clockBlackMs > 0)) {
+    doc["clockWhite"] = clockWhiteMs;
+    doc["clockBlack"] = clockBlackMs;
+  }
   String output;
   serializeJson(doc, output);
   return output;
+}
+
+String WiFiManagerESP32::fetchReviewAnalysisRaw(const String& fen, int depth) {
+  if (WiFi.status() != WL_CONNECTED) {
+    return "";
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(12000);
+  http.setUserAgent("SeleniumChess/analysis");
+
+  if (!http.begin(client, "https://chess-api.com/v1")) {
+    return "";
+  }
+
+  JsonDocument payload;
+  payload["fen"] = fen;
+  payload["depth"] = min(depth, 18);
+  payload["variants"] = 1;
+  payload["maxThinkingTime"] = 100;
+
+  String body;
+  serializeJson(payload, body);
+  http.addHeader("Content-Type", "application/json");
+
+  int httpCode = http.POST(body);
+  if (httpCode != 200) {
+    String err = http.getString();
+    http.end();
+    if (err.length() > 0) {
+      Serial.printf("Chess API HTTP %d: %s\n", httpCode, err.c_str());
+    } else {
+      Serial.printf("Chess API HTTP %d\n", httpCode);
+    }
+    return "";
+  }
+
+  String response = http.getString();
+  http.end();
+  if (response.length() > 0) {
+    return response;
+  }
+
+  return "";
+}
+
+bool WiFiManagerESP32::fetchReviewAnalysis(const String& fen, int depth, StockfishResponse& response) {
+  String rawResponse = fetchReviewAnalysisRaw(fen, depth);
+  if (rawResponse.length() == 0) {
+    response.success = false;
+    response.errorMessage = "Empty response from chess-api.com";
+    return false;
+  }
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, rawResponse);
+  if (err) {
+    response.success = false;
+    response.errorMessage = String("Invalid analysis JSON: ") + err.c_str();
+    return false;
+  }
+
+  if (doc["error"].is<const char*>()) {
+    response.success = false;
+    response.errorMessage = doc["error"].as<String>();
+    return false;
+  }
+
+  response.success = true;
+  response.evaluation = doc["eval"].isNull() ? 0.0f : doc["eval"].as<float>();
+  response.hasMate = !doc["mate"].isNull();
+  response.mateInMoves = response.hasMate ? doc["mate"].as<int>() : 0;
+  response.winChance = doc["winChance"].isNull() ? 50.0f : doc["winChance"].as<float>();
+  response.bestMove = doc["move"].is<const char*>() ? doc["move"].as<String>() : (doc["lan"].is<const char*>() ? doc["lan"].as<String>() : String(""));
+  response.san = doc["san"].is<const char*>() ? doc["san"].as<String>() : String("");
+  response.ponderMove = "";
+  response.continuation = "";
+  response.errorMessage = "";
+
+  if (doc["continuationArr"].is<JsonArray>()) {
+    bool first = true;
+    for (JsonVariant move : doc["continuationArr"].as<JsonArray>()) {
+      if (!first) response.continuation += ' ';
+      response.continuation += move.as<String>();
+      first = false;
+    }
+  }
+
+  return true;
+}
+
+void WiFiManagerESP32::handleAnalysis(AsyncWebServerRequest* request) {
+  String fen = request->hasArg("fen") ? request->arg("fen") : currentFen;
+  int depth = request->hasArg("depth") ? request->arg("depth").toInt() : 18;
+  if (depth < 5) depth = 5;
+  if (depth > 20) depth = 20;
+
+  JsonDocument doc;
+  doc["fen"] = fen;
+  doc["depth"] = depth;
+
+  const unsigned long now = millis();
+  if (analysisCacheValid && analysisCacheFen == fen && analysisCacheDepth == depth && now - analysisCacheTimestamp < 4000) {
+    doc["success"] = true;
+    doc["cached"] = true;
+    doc["evaluation"] = analysisCacheResponse.evaluation;
+    doc["hasMate"] = analysisCacheResponse.hasMate;
+    if (analysisCacheResponse.hasMate) {
+      doc["mate"] = analysisCacheResponse.mateInMoves;
+    }
+    doc["winChance"] = analysisCacheResponse.winChance;
+    doc["bestMove"] = analysisCacheResponse.bestMove;
+    doc["bestmove"] = analysisCacheResponse.bestMove;
+    doc["san"] = analysisCacheResponse.san;
+    doc["ponderMove"] = analysisCacheResponse.ponderMove;
+    doc["continuation"] = analysisCacheResponse.continuation;
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+    return;
+  }
+
+  if (analysisInProgress) {
+    doc["success"] = false;
+    doc["error"] = "Analysis in progress";
+    doc["retryAfterMs"] = 1000;
+    String output;
+    serializeJson(doc, output);
+    request->send(429, "application/json", output);
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    doc["success"] = false;
+    doc["error"] = "WiFi not connected";
+    String output;
+    serializeJson(doc, output);
+    request->send(503, "application/json", output);
+    return;
+  }
+
+  analysisInProgress = true;
+  StockfishResponse response;
+  bool ok = fetchReviewAnalysis(fen, depth, response);
+  if (!ok) {
+    analysisInProgress = false;
+    doc["success"] = false;
+    doc["error"] = response.errorMessage;
+    String output;
+    serializeJson(doc, output);
+    request->send(502, "application/json", output);
+    return;
+  }
+  analysisInProgress = false;
+
+  analysisCacheFen = fen;
+  analysisCacheDepth = depth;
+  analysisCacheTimestamp = millis();
+  analysisCacheResponse = response;
+  analysisCacheValid = true;
+
+  doc["success"] = true;
+  doc["evaluation"] = response.evaluation;
+  doc["hasMate"] = response.hasMate;
+  if (response.hasMate) {
+    doc["mate"] = response.mateInMoves;
+  }
+  doc["winChance"] = response.winChance;
+  doc["bestMove"] = response.bestMove;
+  doc["bestmove"] = response.bestMove;
+  doc["san"] = response.san;
+  doc["ponderMove"] = response.ponderMove;
+  doc["continuation"] = response.continuation;
+  doc["source"] = "chess-api.com";
+
+  String output;
+  serializeJson(doc, output);
+  request->send(200, "application/json", output);
 }
 
 String WiFiManagerESP32::getWiFiInfoJSON() {
@@ -319,6 +648,17 @@ void WiFiManagerESP32::handleGameSelection(AsyncWebServerRequest* request) {
   if (request->hasArg("gamemode"))
     mode = request->arg("gamemode").toInt();
   gameMode = String(mode);
+  // If HvH mode, handle time control config
+  if (mode == 1) {
+    if (request->hasArg("timeMinutes") && request->hasArg("timeIncrement")) {
+      hvhTimeMinutes = request->arg("timeMinutes").toInt();
+      hvhTimeIncrement = request->arg("timeIncrement").toInt();
+      Serial.printf("HvH time control: %d+%d\n", hvhTimeMinutes, hvhTimeIncrement);
+    } else {
+      hvhTimeMinutes = 0;
+      hvhTimeIncrement = 0;
+    }
+  }
   // If bot game mode, also handle bot config
   if (mode == 2) {
     if (request->hasArg("difficulty") && request->hasArg("playerColor")) {
@@ -340,67 +680,21 @@ void WiFiManagerESP32::handleGameSelection(AsyncWebServerRequest* request) {
           break;
       }
       botConfig.playerIsWhite = request->arg("playerColor") == "white";
+      if (request->hasArg("engineSource") && request->arg("engineSource") == "local")
+        botConfig.engineSource = BotEngineSource::LocalEngine;
+      else
+        botConfig.engineSource = BotEngineSource::RemoteStockfish;
       Serial.printf("Bot configuration received: Depth=%d, Player is %s\n", botConfig.stockfishSettings.depth, botConfig.playerIsWhite ? "White" : "Black");
     } else {
       request->send(400, "text/plain", "Missing bot parameters");
       return;
     }
   }
-  // If Lichess mode, verify token exists
+  // If Online Play mode, just confirm
   if (mode == 3) {
-    if (lichessToken.length() == 0) {
-      request->send(400, "text/plain", "No Lichess API token configured");
-      return;
-    }
-    Serial.println("Lichess mode selected via web");
+    Serial.println("Online Play mode selected via web");
   }
   Serial.println("Game mode selected via web: " + gameMode);
-  request->send(200, "text/plain", "OK");
-}
-
-String WiFiManagerESP32::getLichessInfoJSON() {
-  // Don't expose the actual token, just whether it exists and a masked version
-  String maskedToken = "";
-  if (lichessToken.length() > 8) {
-    maskedToken = lichessToken.substring(0, 4) + "..." + lichessToken.substring(lichessToken.length() - 4);
-  } else if (lichessToken.length() > 0) {
-    maskedToken = "****";
-  }
-  JsonDocument doc;
-  doc["hasToken"] = (lichessToken.length() > 0);
-  doc["maskedToken"] = maskedToken;
-  String output;
-  serializeJson(doc, output);
-  return output;
-}
-
-void WiFiManagerESP32::handleSaveLichessToken(AsyncWebServerRequest* request) {
-  if (!request->hasArg("token")) {
-    request->send(400, "text/plain", "Missing token parameter");
-    return;
-  }
-
-  String newToken = request->arg("token");
-  newToken.trim();
-
-  if (newToken.length() < 10) {
-    request->send(400, "text/plain", "Token too short");
-    return;
-  }
-
-  // Save to NVS
-  if (!ChessUtils::ensureNvsInitialized()) {
-    request->send(500, "text/plain", "NVS init failed");
-    return;
-  }
-
-  prefs.begin("lichess", false);
-  prefs.putString("token", newToken);
-  prefs.end();
-
-  lichessToken = newToken;
-  Serial.println("Lichess API token saved to NVS");
-
   request->send(200, "text/plain", "OK");
 }
 
@@ -408,6 +702,27 @@ String WiFiManagerESP32::getBoardSettingsJSON() {
   JsonDocument doc;
   doc["brightness"] = boardDriver->getBrightness();
   doc["dimMultiplier"] = boardDriver->getDimMultiplier();
+  JsonObject colors = doc["colors"].to<JsonObject>();
+  auto addColor = [&](const char* jsonKey, const char* paletteKey) {
+    colors[jsonKey] = ledColorToHex(boardDriver->getPaletteColor(paletteKey));
+  };
+  addColor("playerWhite", "playerWhite");
+  addColor("playerBlack", "playerBlack");
+  addColor("modeHuman", "modeHuman");
+  addColor("modeOnline", "modeOnline");
+  addColor("modeSensor", "modeSensor");
+  addColor("modeStockfish", "modeStockfish");
+  addColor("gameStartEnd", "gameStartEnd");
+  addColor("confirm", "confirm");
+  addColor("capture", "capture");
+  addColor("check", "check");
+  addColor("checkSharpRed", "checkSharpRed");
+  addColor("error", "error");
+  addColor("checkmateWave", "checkmateWave");
+  addColor("checkmateWin", "checkmateWin");
+  addColor("checkmateLose", "checkmateLose");
+  addColor("draw", "draw");
+  addColor("powerCyan", "powerCyan");
   String output;
   serializeJson(doc, output);
   return output;
@@ -415,6 +730,7 @@ String WiFiManagerESP32::getBoardSettingsJSON() {
 
 void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
   bool changed = false;
+  bool invalidColor = false;
 
   if (request->hasArg("brightness")) {
     int brightness = request->arg("brightness").toInt();
@@ -432,18 +748,48 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
     }
   }
 
+  if (request->hasArg("resetColors") && request->arg("resetColors") == "1") {
+    boardDriver->resetPaletteDefaults();
+    changed = true;
+  }
+
+  auto applyColor = [&](const char* argName, const char* keyName) {
+    if (!request->hasArg(argName)) return;
+    LedRGB color;
+    if (!parseHexLedColor(request->arg(argName), color)) {
+      invalidColor = true;
+      return;
+    }
+    if (boardDriver->setPaletteColor(keyName, color)) changed = true;
+  };
+
+  applyColor("colorPlayerWhite", "playerWhite");
+  applyColor("colorPlayerBlack", "playerBlack");
+  applyColor("colorModeHuman", "modeHuman");
+  applyColor("colorModeOnline", "modeOnline");
+  applyColor("colorModeSensor", "modeSensor");
+  applyColor("colorModeStockfish", "modeStockfish");
+  applyColor("colorGameStartEnd", "gameStartEnd");
+  applyColor("colorConfirm", "confirm");
+  applyColor("colorCapture", "capture");
+  applyColor("colorCheck", "check");
+  applyColor("colorCheckSharpRed", "checkSharpRed");
+  applyColor("colorError", "error");
+  applyColor("colorCheckmateWave", "checkmateWave");
+  applyColor("colorCheckmateWin", "checkmateWin");
+  applyColor("colorCheckmateLose", "checkmateLose");
+  applyColor("colorDraw", "draw");
+  applyColor("colorPowerCyan", "powerCyan");
+
   if (changed) {
     boardDriver->saveLedSettings();
     Serial.println("Board settings updated via web interface");
     request->send(200, "text/plain", "OK");
+  } else if (invalidColor) {
+    request->send(400, "text/plain", "Invalid color format (expected #RRGGBB)");
   } else {
     request->send(400, "text/plain", "No valid settings provided");
   }
-}
-
-void WiFiManagerESP32::handleBoardCalibration(AsyncWebServerRequest* request) {
-  boardDriver->triggerCalibration();
-  request->send(200, "text/plain", "Calibration will start on next reboot");
 }
 
 void WiFiManagerESP32::getHardwareConfigJSON(AsyncWebServerRequest* request) {
@@ -508,10 +854,14 @@ void WiFiManagerESP32::handleHardwareConfig(AsyncWebServerRequest* request) {
   }
 }
 
-LichessConfig WiFiManagerESP32::getLichessConfig() {
-  LichessConfig config;
-  config.apiToken = lichessToken;
-  return config;
+void WiFiManagerESP32::setShowMoves(bool value) {
+  showMoves = value;
+  if (ChessUtils::ensureNvsInitialized()) {
+    prefs.begin("display", false);
+    prefs.putBool("showMoves", value);
+    prefs.end();
+  }
+  Serial.printf("Show valid moves: %s\n", value ? "on" : "off");
 }
 
 void WiFiManagerESP32::updateBoardState(const String& fen, float evaluation) {
@@ -551,6 +901,27 @@ void WiFiManagerESP32::clearPendingResign() {
 
 void WiFiManagerESP32::clearPendingDraw() {
   hasPendingDraw = false;
+}
+
+bool WiFiManagerESP32::getPendingHome() {
+  return hasPendingHome;
+}
+
+void WiFiManagerESP32::clearPendingHome() {
+  hasPendingHome = false;
+}
+
+void WiFiManagerESP32::addLog(const String& msg) {
+  Serial.println(msg);
+  if (logMutex && xSemaphoreTake(logMutex, pdMS_TO_TICKS(50))) {
+    if (logBuffer.length() > 8000) {
+      // Drop oldest half to prevent OOM
+      int cutAt = logBuffer.indexOf('\n', logBuffer.length() / 2);
+      if (cutAt > 0) logBuffer = logBuffer.substring(cutAt + 1);
+    }
+    logBuffer += msg + "\n";
+    xSemaphoreGive(logMutex);
+  }
 }
 
 void WiFiManagerESP32::handlePromotion(AsyncWebServerRequest* request) {
@@ -594,7 +965,9 @@ void WiFiManagerESP32::checkPendingWiFi() {
   if (connectedProfileIndex >= 0 && WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi connection lost, attempting reconnect...");
     connectedProfileIndex = -1;
+    suppressConnectAnimation = true;
     if (!connectToSavedProfile()) startAPFallback();
+    suppressConnectAnimation = false;
   }
 
   if (pendingWiFi.action == NONE) return;
@@ -999,7 +1372,10 @@ void WiFiManagerESP32::promoteProfile(int index) {
 
 bool WiFiManagerESP32::waitForConnection(int maxAttempts) {
   for (int i = 0; i < maxAttempts; i++) {
-    boardDriver->showConnectingAnimation();
+    if (suppressConnectAnimation)
+      delay(1000);
+    else
+      boardDriver->showConnectingAnimation();
     wl_status_t st = WiFi.status();
     Serial.printf("  Attempt %d/%d - Status: %d\n", i + 1, maxAttempts, st);
     if (st == WL_CONNECTED) return true;
@@ -1020,8 +1396,8 @@ bool WiFiManagerESP32::tryConnect(const String& ssid, const String& password, co
   delay(100);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  WiFi.setHostname("OpenChess");
-  WiFi.mode(WIFI_STA);
+  WiFi.setHostname("SeleniumChess");
+  WiFi.mode(WIFI_AP_STA); // Keep AP running while trying STA
 
   int maxAttempts = isFast ? 5 : 10;
   if (!isFast && scanAllChannels) {
@@ -1092,15 +1468,10 @@ bool WiFiManagerESP32::connectToSavedProfile() {
 }
 
 void WiFiManagerESP32::startAPFallback() {
-  Serial.println("Starting AP fallback...");
-  WiFi.mode(WIFI_AP);
-  if (!WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET))
-    Serial.println("ERROR: Failed to configure AP IP settings!");
-  if (!WiFi.softAP(AP_SSID, AP_PASSWORD))
-    Serial.println("ERROR: Failed to create Access Point!");
+  // AP is already running (started in begin()), just ensure MDNS and captive portal are up
+  Serial.println("No STA connection. Running AP-only mode.");
   startMDNS();
   connectedProfileIndex = -1;
-  startCaptivePortal();
   pendingWiFi.action = SCAN_NETWORKS;
 }
 

@@ -44,6 +44,7 @@ class ChessGame {
   void updateCastlingRightsAfterMove(int fromRow, int fromCol, int toRow, int toCol, char movedPiece, char capturedPiece);
   void applyCastling(int kingFromRow, int kingFromCol, int kingToRow, int kingToCol, char kingPiece, bool waitForKingCompletion = false);
   void confirmSquareCompletion(int row, int col);
+  void waitForBoardConsistency();
 
   static constexpr unsigned long PROMOTION_TIMEOUT_MS = 120000; // 2 minutes to choose a promotion, after which it defaults to queen
 
@@ -62,6 +63,7 @@ class ChessGame {
 
   // Resign: the resigning color loses
   void resignGame(char resigningColor);
+  void timeoutGame(char losingColor);
   // Draw by mutual agreement
   void drawGame();
   // Check if kings have been lifted off the board (physical resign/draw gesture)

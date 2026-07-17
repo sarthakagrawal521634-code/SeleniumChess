@@ -1,6 +1,6 @@
 {
     "imagePath": "./BuildGuide/",
-    "githubUrl": "https://github.com/joojoooo/OpenChess",
+    "githubUrl": "https://github.com/joojoooo/SeleniumChess",
     "hero": {
         "title": "Build Your Own",
         "titleAccent": "Smart Chess Board",
@@ -712,7 +712,7 @@
                     "images": [
                         {
                             "file": "video.gif",
-                            "alt": "OpenChess demo video",
+                            "alt": "SeleniumChess demo video",
                             "noZoom": true,
                             "maxWidth": "600px"
                         }
@@ -752,8 +752,8 @@
             {
                 "title": "3. Connect to Web UI",
                 "items": [
-                    "Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)",
-                    "Go to <a href='http://openchess.local' target='_blank'><strong>http://openchess.local</strong></a> to configure your board",
+                    "Connect to the <strong>SeleniumChess</strong> WiFi (password: <strong>chess123</strong>)",
+                    "Go to <a href='http://seleniumchess.local' target='_blank'><strong>http://seleniumchess.local</strong></a> to configure your board",
                     "Click on the <strong>GPIO</strong> section to set the correct pins and transistor type (PNP/NPN) <strong>BEFORE</strong> connecting wires to GPIOs. Incorrect configuration with wires connected can cause short circuits"
                 ]
             },
@@ -769,10 +769,10 @@
                 "title": "5. Play!",
                 "items": [
                     "Power on the board - LEDs light up in the center for game selection",
-                    "Place a piece on a lit square:<ul><li><strong style=\"color: #2196F3;\">Blue</strong> - Human vs Human</li><li><strong style=\"color: #4CAF50;\">Green</strong> - Human vs Stockfish</li><li><strong style=\"color: #FFEB3B;\">Yellow</strong> - Online (Lichess)</li><li><strong style=\"color: #F44336;\">Red</strong> - Sensor Test</li></ul>"
+                    "Place a piece on a lit square:<ul><li><strong style=\"color: #2196F3;\">Blue</strong> - Human vs Human</li><li><strong style=\"color: #4CAF50;\">Green</strong> - Human vs Stockfish</li><li><strong style=\"color: #FFEB3B;\">Yellow</strong> - Online Play (ChessConnect)</li><li><strong style=\"color: #F44336;\">Red</strong> - Sensor Test</li></ul>"
                 ]
             }
         ],
-        "helpNote": "Enable Serial Monitor at 115200 baud for detailed diagnostics. Check the <a href=\"https://github.com/joojoooo/OpenChess\" target=\"_blank\">GitHub repository</a> for the latest updates and to report issues."
+        "helpNote": "Enable Serial Monitor at 115200 baud for detailed diagnostics. Check the <a href=\"https://github.com/joojoooo/SeleniumChess\" target=\"_blank\">GitHub repository</a> for the latest updates and to report issues."
     }
 }

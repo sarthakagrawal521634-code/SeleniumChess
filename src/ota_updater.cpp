@@ -35,7 +35,7 @@ bool OtaUpdater::isNewerVersion(const String& current, const String& remote) {
 bool OtaUpdater::beginHttpGet(HTTPClient& http, const String& url, int timeoutMs) {
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setTimeout(timeoutMs);
-  http.setUserAgent("OpenChess/" FIRMWARE_VERSION);
+  http.setUserAgent("SeleniumChess/" FIRMWARE_VERSION);
 
   if (!http.begin(url)) {
     Serial.println("OTA: Failed to connect: " + url);

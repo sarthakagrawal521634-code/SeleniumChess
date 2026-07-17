@@ -1,4 +1,4 @@
-# Contributing to OpenChess
+# Contributing to SeleniumChess
 
 Contributions are welcome! If you have any new ideas to add or feedback to share, I'd love to hear it!
 

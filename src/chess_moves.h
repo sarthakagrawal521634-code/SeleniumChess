@@ -9,6 +9,13 @@ class MoveHistory;
 // Chess Game Mode Class
 // ---------------------------
 class ChessMoves : public ChessGame {
+ private:
+  long clockWhiteMs;
+  long clockBlackMs;
+  int incrementMs;
+  bool clockEnabled;
+  unsigned long lastClockTick;
+
  public:
   ChessMoves(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh);
   void begin() override;

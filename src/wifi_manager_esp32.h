@@ -3,6 +3,7 @@
 
 #include "board_driver.h"
 #include "ota_updater.h"
+#include "stockfish_api.h"
 #include "stockfish_settings.h"
 #include <Arduino.h>
 #include <AsyncTCP.h>
@@ -14,16 +15,15 @@
 #include <WiFi.h>
 
 // Forward declarations
-struct LichessConfig;
 class MoveHistory;
 
 // ---------------------------
 // WiFi Configuration
 // ---------------------------
-#define AP_SSID "OpenChess"
+#define AP_SSID "SeleniumChess"
 #define AP_PASSWORD "chess123"
 #define HTTP_PORT 80
-#define MDNS_HOSTNAME "openchess"
+#define MDNS_HOSTNAME "seleniumchess"
 #define MAX_WIFI_PROFILES 3
 #define NVS_WIFI_NAMESPACE "wifiProfiles"
 
@@ -68,24 +68,46 @@ class WiFiManagerESP32 {
 
   Preferences prefs;
   String gameMode;
-  String lichessToken;
+
+  // Display settings
+  bool showMoves;
+
+  // BLE connection status (set by ChessConnect game mode)
+  volatile bool bleConnected;
 
   // Saved WiFi profiles (up to MAX_WIFI_PROFILES, index 0 = most recently connected)
   WiFiProfile profiles[MAX_WIFI_PROFILES];
   int profileCount;
   bool scanAllChannels;
+  bool suppressConnectAnimation; // Suppress LED animation during background reconnect
   int connectedProfileIndex; // Index of currently connected profile, or -1
 
   // Scan results (populated by deferred scan task)
   ScannedNetwork* scanResults;
   int scanResultCount;
 
-  BotConfig botConfig = {StockfishSettings::medium(), true};
+  BotConfig botConfig = {StockfishSettings::medium(), true, BotEngineSource::RemoteStockfish};
+
+  // Player display names (set at game start)
+  String playerNameWhite = "White";
+  String playerNameBlack = "Black";
+
+  // HvH time control config (from web game selection)
+  int hvhTimeMinutes = 0;    // 0 = no time control
+  int hvhTimeIncrement = 0;  // seconds per move increment
 
   MoveHistory* moveHistory;
   BoardDriver* boardDriver;
   String currentFen;
   float boardEvaluation;
+
+  // Stockfish analysis throttling/cache state (prevents TLS memory pressure on frequent polls)
+  volatile bool analysisInProgress;
+  String analysisCacheFen;
+  int analysisCacheDepth;
+  unsigned long analysisCacheTimestamp;
+  StockfishResponse analysisCacheResponse;
+  bool analysisCacheValid;
 
   // Board edit storage (pending edits from web interface)
   String pendingFenEdit;
@@ -109,8 +131,19 @@ class WiFiManagerESP32 {
   };
   PromotionState promotion;
 
-  // Web client heartbeat (tracks whether board.html is actively polling)
+  // Web client heartbeat (tracks whether the board tab is actively polling)
   unsigned long lastBoardPollTime; // millis() of last /board-update GET request
+
+  // Active game state (exposed to web clients via /board-update)
+  volatile int activeGameMode; // Current game mode (GameMode enum value)
+  volatile bool gameIsOver;    // Whether the current game has ended
+
+  // Pending home request from web UI
+  volatile bool hasPendingHome;
+
+  // Log buffer for web-accessible logging
+  SemaphoreHandle_t logMutex;
+  String logBuffer;
 
   // Deferred WiFi actions (set by web handler, processed by worker task)
   enum PendingAction {
@@ -154,15 +187,15 @@ class WiFiManagerESP32 {
   // Web interface methods
   String getWiFiInfoJSON();
   String getBoardUpdateJSON();
-  String getLichessInfoJSON();
   String getBoardSettingsJSON();
+  String fetchReviewAnalysisRaw(const String& fen, int depth);
+  bool fetchReviewAnalysis(const String& fen, int depth, StockfishResponse& response);
   void handleBoardEditSuccess(AsyncWebServerRequest* request);
+  void handleAnalysis(AsyncWebServerRequest* request);
   void handlePromotion(AsyncWebServerRequest* request);
   void handleConnectWiFi(AsyncWebServerRequest* request);
   void handleGameSelection(AsyncWebServerRequest* request);
-  void handleSaveLichessToken(AsyncWebServerRequest* request);
   void handleBoardSettings(AsyncWebServerRequest* request);
-  void handleBoardCalibration(AsyncWebServerRequest* request);
   void handleResign(AsyncWebServerRequest* request);
   void handleDraw(AsyncWebServerRequest* request);
   void getHardwareConfigJSON(AsyncWebServerRequest* request);
@@ -203,9 +236,14 @@ class WiFiManagerESP32 {
   void resetGameSelection() { gameMode = "0"; };
   // Bot configuration
   BotConfig getBotConfig() { return botConfig; }
-  // Lichess configuration
-  LichessConfig getLichessConfig();
-  String getLichessToken() { return lichessToken; }
+  void setPlayerNames(const String& w, const String& b) { playerNameWhite = w; playerNameBlack = b; }
+  // HvH time control
+  int getHvhTimeMinutes() const { return hvhTimeMinutes; }
+  int getHvhTimeIncrement() const { return hvhTimeIncrement; }
+  // Clock state (set by game loop, read by web clients via /board-update)
+  volatile long clockWhiteMs;   // remaining ms for white
+  volatile long clockBlackMs;   // remaining ms for black
+  volatile bool clockRunning;   // whether any clock is ticking
   // Board state management (FEN-based)
   void updateBoardState(const String& fen, float evaluation = 0.0f);
   String getCurrentFen() const { return currentFen; }
@@ -227,6 +265,21 @@ class WiFiManagerESP32 {
   bool isWebClientConnected() const;
   // Check if WiFi is connected (re-attempts if not)
   bool ensureConnected();
+  // Display settings
+  bool getShowMoves() const { return showMoves; }
+  void setShowMoves(bool value);
+  // BLE status (for web UI polling)
+  void setBleConnected(bool value) { bleConnected = value; }
+  bool isBleConnected() const { return bleConnected; }
+  // Game state tracking (set from main loop, read by web clients)
+  void setActiveGameMode(int mode) { activeGameMode = mode; }
+  void setGameOver(bool over) { gameIsOver = over; }
+  int getActiveGameMode() const { return activeGameMode; }
+  // Home request from web UI
+  bool getPendingHome();
+  void clearPendingHome();
+  // Web-accessible logging (thread-safe)
+  void addLog(const String& msg);
   // Processes deferred WiFi actions (called by pendingWiFiBackgroundTask)
   void checkPendingWiFi();
 };

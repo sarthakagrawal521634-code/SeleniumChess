@@ -1,112 +1,134 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GameMode Selection</title>
+    <title>Selenium Chess</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" href="./css/styles.css">
 </head>
 
 <body>
     <div class="container">
-        <h2>GameMode Selection</h2>
-        <div class="game-grid">
-            <div class="game-mode available mode-1" onclick="selectGame(1)">
-                <h3>Chess Moves</h3>
-                <p>Human vs Human</p>
-                <p>Visualize available moves</p>
+        <div class="hero-panel">
+            <div class="hero-kicker">Play</div>
+            <h1 class="hero-title">Choose the board mode.</h1>
+            <p class="hero-subtitle">Fast launch for local games, online play, Stockfish matches, or sensor diagnostics.</p>
+        </div>
+
+        <div class="mode-launch-grid">
+            <div class="mode-launch-card">
+                <div class="game-grid">
+                    <div class="game-mode available mode-1" onclick="selectGame(1)">
+                        <h3>Chess Moves</h3>
+                        <p>Human vs human</p>
+                        <p>Visual move guidance</p>
+                    </div>
+                    <div class="game-mode available mode-3" onclick="selectGame(3)">
+                        <h3><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="vertical-align:-2px; margin-right:4px;"><path d="M1 9l2 2c5.523-5.523 14.477-5.523 20 0l2-2C16.477 4.477 7.523 4.477 1 9zm8 8l3 3 3-3c-1.657-1.657-4.343-1.657-6 0zm-4-4l2 2c2.762-2.761 7.238-2.761 10 0l2-2C15.238 9.238 8.762 9.238 5 13z"/></svg> Online Play</h3>
+                        <p>ChessConnect bridge</p>
+                        <p>Sync to online games</p>
+                    </div>
+                    <div class="game-mode available mode-4" onclick="selectGame(4)">
+                        <h3>Sensor Test</h3>
+                        <p>Hardware verification</p>
+                        <p>Check every square</p>
+                    </div>
+                    <div class="game-mode available mode-2" onclick="document.getElementById('botConfigPanel').scrollIntoView({ behavior: 'smooth', block: 'start' })">
+                        <h3>Stockfish</h3>
+                        <p>Stockfish</p>
+                        <p>Inline setup below</p>
+                    </div>
+                </div>
             </div>
-            <div class="game-mode available mode-2" onclick="showBotConfig()">
-                <h3>Chess Bot</h3>
-                <p>Human vs AI</p>
-                <p>(Stockfish)</p>
-            </div>
-            <div class="game-mode available mode-3" onclick="selectGame(3)">
-                <h3>Lichess</h3>
-                <p>Play online games</p>
-                <p>on your physical board</p>
-            </div>
-            <div class="game-mode available mode-4" onclick="selectGame(4)">
-                <h3>Sensor Test</h3>
-                <p>Test board sensors</p>
+
+            <div id="botConfigPanel" class="mode-launch-card">
+                <h3>Bot Configuration</h3>
+                <p>Use direct toggle controls instead of dropdown selectors.</p>
+
+                <div class="game-options">
+                    <div class="option-group">
+                        <label>Your Color</label>
+                        <div class="toggle-group" id="botPlayerColorGroup">
+                            <button class="toggle-btn active" data-value="white">White</button>
+                            <button class="toggle-btn" data-value="black">Black</button>
+                        </div>
+                    </div>
+                    <div class="option-group">
+                        <label>Difficulty</label>
+                        <div class="toggle-group" id="botDifficultyGroup">
+                            <button class="toggle-btn" data-value="1">Easy</button>
+                            <button class="toggle-btn active" data-value="2">Medium</button>
+                            <button class="toggle-btn" data-value="3">Hard</button>
+                            <button class="toggle-btn" data-value="4">Expert</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-row" style="margin-top:14px;">
+                    <button class="button" onclick="selectGame(2)" style="margin:0;">Start Bot Game</button>
+                    <a href="./index.html#board" class="button" style="margin:0; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">Open Board</a>
+                </div>
+                <div class="page-status" id="gamePageStatus">Ready.</div>
             </div>
         </div>
 
-        <!-- Bot Configuration Panel (hidden by default) -->
-        <div id="botConfigPanel" class="config-panel anim-panel">
-            <h3>Bot Configuration</h3>
-
-            <div class="form-group">
-                <label for="botPlayerColor">Your Color:</label>
-                <select id="botPlayerColor">
-                    <option value="white">Play as White (bot is Black)</option>
-                    <option value="black">Play as Black (bot is White)</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="botDifficulty">Difficulty:</label>
-                <select id="botDifficulty">
-                    <option value="1">Easy (Depth 5, Fast)</option>
-                    <option value="2" selected>Medium (Depth 8, Balanced)</option>
-                    <option value="3">Hard (Depth 11, Slow)</option>
-                    <option value="4">Expert (Depth 15, Very Slow)</option>
-                </select>
-            </div>
-
-            <button onclick="selectGame(2)" class="button" style="background-color: #4CAF50;">
-                Start Game
-            </button>
-            <button onclick="hideBotConfig()" class="button" style="background-color: #f44336;">
-                Cancel
-            </button>
+        <div class="toolbar-row" style="margin-top:16px;">
+            <a href="./index.html" class="button" style="margin:0; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">Control Center</a>
         </div>
-
-        <a href="./board.html" class="button">View Board</a>
-        <a href="./index.html" class="back-button">OpenChess Home</a>
     </div>
+
     <script>
-        function showBotConfig() {
-            document.getElementById('botConfigPanel').classList.add('visible');
+        let selectedPlayerColor = 'white';
+        let selectedDifficulty = '2';
+
+        function bindToggleGroup(groupId, callback) {
+            document.querySelectorAll('#' + groupId + ' .toggle-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    document.querySelectorAll('#' + groupId + ' .toggle-btn').forEach(item => item.classList.remove('active'));
+                    button.classList.add('active');
+                    callback(button.dataset.value);
+                });
+            });
         }
 
-        function hideBotConfig() {
-            document.getElementById('botConfigPanel').classList.remove('visible');
-        }
+        async function selectGame(mode) {
+            let requestBody = 'gamemode=' + mode;
+            if (mode === 2) {
+                requestBody += '&playerColor=' + encodeURIComponent(selectedPlayerColor);
+                requestBody += '&difficulty=' + encodeURIComponent(selectedDifficulty);
+            }
 
-        function selectGame(mode) {
-            if (mode === 1 || mode === 2 || mode === 3 || mode === 4) {
-                requestBody = 'gamemode=' + mode;
-                if (mode === 2)
-                    requestBody += '&playerColor=' + document.getElementById('botPlayerColor').value + '&difficulty=' + document.getElementById('botDifficulty').value;
-                fetch('./gameselect', {
+            try {
+                document.getElementById('gamePageStatus').textContent = 'Sending game selection...';
+                const response = await fetch('./gameselect', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: requestBody
-                }).then(response => {
-                    if (!response.ok) {
-                        if (mode === 3) {
-                            alert('Please configure your Lichess API token in the Home page settings first.');
-                        } else {
-                            alert('Failed to select game mode. Please try again.');
-                        }
-                        return;
-                    }
-                    return response.text();
-                }).then(data => {
-                    if (data && mode != 4) // Don't redirect for sensor test
-                        window.location.href = "./board.html";
-                }).catch(error => {
-                    console.error('Error:', error);
-                    alert('Failed to select game mode. Please try again.');
                 });
-            } else {
-                alert('This game mode doesn\'t exist!');
+                if (!response.ok) {
+                    throw new Error(await response.text() || 'Failed to select game mode');
+                }
+                document.getElementById('gamePageStatus').textContent = 'Mode selected.';
+                if (mode !== 4) {
+                    window.location.href = './index.html#board';
+                }
+            } catch (error) {
+                document.getElementById('gamePageStatus').textContent = error.message;
+                alert('Failed to select game mode. Please try again.');
             }
         }
+
+        bindToggleGroup('botPlayerColorGroup', value => {
+            selectedPlayerColor = value;
+        });
+
+        bindToggleGroup('botDifficultyGroup', value => {
+            selectedDifficulty = value;
+        });
     </script>
 </body>
 

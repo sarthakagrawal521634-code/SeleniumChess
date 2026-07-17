@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenChess Web Installer</title>
+    <title>SeleniumChess Web Installer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -220,7 +220,7 @@
         <a href="index.html" class="back-link">← Back to Build Guide</a>
 
         <div class="header">
-            <h1>♟ OpenChess <span class="accent">Web Installer</span></h1>
+            <h1>♟ SeleniumChess <span class="accent">Web Installer</span></h1>
             <p>Flash your ESP32 directly from the browser, no Arduino/PlatformIO IDE needed</p>
         </div>
 
@@ -233,11 +233,11 @@
         </div>
 
         <div class="card install-section">
-            <h2 style="justify-content: center;"><span class="step-number">2</span> Flash OpenChess</h2>
+            <h2 style="justify-content: center;"><span class="step-number">2</span> Flash SeleniumChess</h2>
             <p style="margin-bottom: 20px;">Connect your ESP32 via USB and click the button below</p>
 
             <esp-web-install-button id="installButton" manifest="manifest.json">
-                <button slot="activate">Install OpenChess</button>
+                <button slot="activate">Install SeleniumChess</button>
                 <span slot="unsupported">
                     <p style="color: var(--red);">Your browser does not support Web Serial.<br>
                         Please use Chrome, Edge or Opera
@@ -259,11 +259,11 @@
             <h2><span class="step-number">3</span> After Flashing</h2>
             <ul>
                 <li>
-                    Connect to the <strong>OpenChess</strong> WiFi (password: <strong>chess123</strong>)
+                    Connect to the <strong>SeleniumChess</strong> WiFi (password: <strong>chess123</strong>)
                 </li>
                 <li>
                     Go to
-                    <a href="http://openchess.local" target="_blank"><strong>http://openchess.local</strong></a>
+                    <a href="http://seleniumchess.local" target="_blank"><strong>http://seleniumchess.local</strong></a>
                     to configure your board
                 </li>
                 <li>
@@ -283,7 +283,7 @@
     </div>
 
     <footer>
-        OpenChess - <a href="https://github.com/joojoooo/OpenChess" target="_blank">View on GitHub</a>
+        SeleniumChess - <a href="https://github.com/joojoooo/SeleniumChess" target="_blank">View on GitHub</a>
     </footer>
 </body>
 

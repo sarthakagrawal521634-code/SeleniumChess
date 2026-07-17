@@ -584,6 +584,39 @@ bool ChessEngine::isKingInCheck(const char board[8][8], char kingColor) {
   return isSquareUnderAttack(board, kingRow, kingCol, kingColor);
 }
 
+bool ChessEngine::findAttackingPiece(const char board[8][8], char kingColor, int& attackerRow, int& attackerCol) {
+  int kingRow, kingCol;
+  if (!findKingPosition(board, kingColor, kingRow, kingCol))
+    return false;
+
+  char attackingColor = (kingColor == 'w') ? 'b' : 'w';
+  for (int r = 0; r < 8; r++)
+    for (int c = 0; c < 8; c++) {
+      char piece = board[r][c];
+      if (piece == ' ') continue;
+      if (ChessUtils::getPieceColor(piece) != attackingColor) continue;
+      if (toupper(piece) == 'P') {
+        int direction = (attackingColor == 'w') ? -1 : 1;
+        if (r + direction == kingRow && (c - 1 == kingCol || c + 1 == kingCol)) {
+          attackerRow = r;
+          attackerCol = c;
+          return true;
+        }
+        continue;
+      }
+      int moveCount = 0;
+      int moves[28][2];
+      getPseudoLegalMoves(board, r, c, moveCount, moves, false);
+      for (int i = 0; i < moveCount; i++)
+        if (moves[i][0] == kingRow && moves[i][1] == kingCol) {
+          attackerRow = r;
+          attackerCol = c;
+          return true;
+        }
+    }
+  return false;
+}
+
 bool ChessEngine::hasAnyLegalMove(const char board[8][8], char color) {
   for (int fromRow = 0; fromRow < 8; fromRow++)
     for (int fromCol = 0; fromCol < 8; fromCol++) {

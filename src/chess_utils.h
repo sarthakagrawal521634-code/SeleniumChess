@@ -14,7 +14,7 @@ class ChessUtils {
   }
 
   static LedRGB colorLed(char color) {
-    return (color == 'w') ? LedColors::White : ((color == 'b') ? LedColors::Blue : LedColors::Off);
+    return (color == 'w') ? LedColors::PlayerWhite : ((color == 'b') ? LedColors::PlayerBlack : LedColors::Off);
   }
 
   static char getPieceColor(char piece) {

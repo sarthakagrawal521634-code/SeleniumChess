@@ -78,7 +78,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: OpenChess ${{ github.ref_name }}
+          name: SeleniumChess ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             release/firmware.bin
@@ -88,10 +88,10 @@ jobs:
             release/littlefs.bin
             release/web_assets.tar
           body: |
-            ## OpenChess ${{ github.ref_name }}
+            ## SeleniumChess ${{ github.ref_name }}
 
             ### Flash via Browser (ESP Web Tools)
-            Visit the [OpenChess Web Installer](https://joojoooo.github.io/OpenChess/flash.html) to flash your ESP32 directly from your browser.
+            Visit the [SeleniumChess Web Installer](https://joojoooo.github.io/SeleniumChess/flash.html) to flash your ESP32 directly from your browser.
 
             ### Release Files
             | File | Description |

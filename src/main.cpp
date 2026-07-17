@@ -1,7 +1,8 @@
 #include "board_driver.h"
+#include "ble_chessup.h"
 #include "chess_bot.h"
+#include "chess_connect.h"
 #include "chess_engine.h"
-#include "chess_lichess.h"
 #include "chess_moves.h"
 #include "chess_utils.h"
 #include "led_colors.h"
@@ -21,12 +22,11 @@ enum GameMode {
   MODE_SELECTION = 0,
   MODE_CHESS_MOVES = 1,
   MODE_BOT = 2,
-  MODE_LICHESS = 3,
+  MODE_ONLINE_PLAY = 3,
   MODE_SENSOR_TEST = 4
 };
 
 BotConfig botConfig = {StockfishSettings::medium(), true};
-LichessConfig lichessConfig = {""};
 
 BoardDriver boardDriver;
 ChessEngine chessEngine;
@@ -34,7 +34,8 @@ MoveHistory moveHistory;
 WiFiManagerESP32 wifiManager(&boardDriver, &moveHistory);
 ChessMoves* chessMoves = nullptr;
 ChessBot* chessBot = nullptr;
-ChessLichess* chessLichess = nullptr;
+BleChessUp* bleChessUp = nullptr;
+ChessConnect* chessConnect = nullptr;
 SensorTest* sensorTest = nullptr;
 
 GameMode currentMode = MODE_SELECTION;
@@ -46,13 +47,14 @@ void showGameSelection();
 void handleGameSelection();
 void handleBotConfigSelection();
 void initializeSelectedMode(GameMode mode);
+void cleanupCurrentGame();
 
 void setup() {
   Serial.begin(115200);
   delay(3000);
   Serial.println();
   Serial.println("================================================");
-  Serial.println("         OpenChess Starting Up");
+  Serial.println("         SeleniumChess Starting Up");
   Serial.println("         Firmware version: " FIRMWARE_VERSION);
   Serial.println("================================================");
   if (!ChessUtils::ensureNvsInitialized())
@@ -63,8 +65,8 @@ void setup() {
     Serial.println("LittleFS mounted successfully");
   moveHistory.begin();
   boardDriver.beginHardware();
+  boardDriver.powerAnimation(true);
   wifiManager.begin();
-  boardDriver.checkCalibration();
   Serial.println();
   // Kick off NTP time sync (non-blocking, will resolve in background)
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -111,9 +113,9 @@ void loop() {
     } else if (currentMode == MODE_BOT && modeInitialized && chessBot != nullptr) {
       chessBot->setBoardStateFromFEN(editFen);
       Serial.println("Board edit applied to Chess Bot mode");
-    } else if (currentMode == MODE_LICHESS && modeInitialized && chessLichess != nullptr) {
-      chessLichess->setBoardStateFromFEN(editFen);
-      Serial.println("Board edit applied to Lichess mode");
+    } else if (currentMode == MODE_ONLINE_PLAY && modeInitialized && chessConnect != nullptr) {
+      chessConnect->setBoardStateFromFEN(editFen);
+      Serial.println("Board edit applied to Online Play mode");
     } else {
       Serial.println("Warning: Board edit received but no active game mode");
     }
@@ -124,13 +126,13 @@ void loop() {
   // Check for pending resign from WiFi
   char resignColor;
   if (wifiManager.getPendingResign(resignColor)) {
-    Serial.printf("Processing resign from web UI: %c resigns\n", resignColor);
+    wifiManager.addLog(String("Resign from web UI: ") + (resignColor == 'w' ? "White" : "Black") + " resigns");
     if (currentMode == MODE_CHESS_MOVES && modeInitialized && chessMoves != nullptr) {
       chessMoves->resignGame(resignColor);
     } else if (currentMode == MODE_BOT && modeInitialized && chessBot != nullptr) {
       chessBot->resignGame(resignColor);
-    } else if (currentMode == MODE_LICHESS && modeInitialized && chessLichess != nullptr) {
-      chessLichess->resignGame(resignColor);
+    } else if (currentMode == MODE_ONLINE_PLAY && modeInitialized && chessConnect != nullptr) {
+      chessConnect->resignGame(resignColor);
     } else {
       Serial.println("Warning: Resign received but no active game mode");
     }
@@ -139,23 +141,33 @@ void loop() {
 
   // Check for pending draw from WiFi
   if (wifiManager.getPendingDraw()) {
-    Serial.println("Processing draw from web UI");
+    wifiManager.addLog("Draw agreed from web UI");
     if (currentMode == MODE_CHESS_MOVES && modeInitialized && chessMoves != nullptr) {
       chessMoves->drawGame();
     } else if (currentMode == MODE_BOT && modeInitialized && chessBot != nullptr) {
       chessBot->drawGame();
-    } else if (currentMode == MODE_LICHESS && modeInitialized && chessLichess != nullptr) {
-      chessLichess->drawGame();
+    } else if (currentMode == MODE_ONLINE_PLAY && modeInitialized && chessConnect != nullptr) {
+      chessConnect->drawGame();
     } else {
       Serial.println("Warning: Draw received but no active game mode");
     }
     wifiManager.clearPendingDraw();
   }
 
+  // Check for pending home request from web UI
+  if (wifiManager.getPendingHome()) {
+    wifiManager.addLog("Returning to game selection (web request)");
+    cleanupCurrentGame();
+    showGameSelection();
+    wifiManager.clearPendingHome();
+    return;
+  }
+
   // Check for WiFi game selection
   int selectedMode = wifiManager.getSelectedGameMode();
   if (selectedMode > 0) {
-    Serial.printf("WiFi game selection detected: %d\n", selectedMode);
+    wifiManager.addLog("Game mode selected via web: " + String(selectedMode));
+    cleanupCurrentGame();
     switch (selectedMode) {
       case 1:
         currentMode = MODE_CHESS_MOVES;
@@ -165,8 +177,7 @@ void loop() {
         botConfig = wifiManager.getBotConfig();
         break;
       case 3:
-        currentMode = MODE_LICHESS;
-        lichessConfig = wifiManager.getLichessConfig();
+        currentMode = MODE_ONLINE_PLAY;
         break;
       case 4:
         currentMode = MODE_SENSOR_TEST;
@@ -184,6 +195,8 @@ void loop() {
   }
 
   if (currentMode == MODE_SELECTION) {
+    wifiManager.setActiveGameMode(0);
+    wifiManager.setGameOver(false);
     handleGameSelection();
     return;
   }
@@ -191,32 +204,41 @@ void loop() {
   if (!modeInitialized) {
     initializeSelectedMode(currentMode);
     modeInitialized = true;
+    wifiManager.setActiveGameMode(currentMode);
+    wifiManager.setGameOver(false);
     delay(1); // HACK: Ensure any starting animations acquire the LED mutex before proceeding
   }
 
   switch (currentMode) {
     case MODE_CHESS_MOVES:
       if (chessMoves != nullptr) {
-        if (chessMoves->isGameOver())
+        if (chessMoves->isGameOver()) {
+          wifiManager.addLog("Game over (Chess Moves)");
+          wifiManager.setGameOver(true);
           showGameSelection();
-        else
+        } else
           chessMoves->update();
       }
       break;
     case MODE_BOT:
       if (chessBot != nullptr) {
-        if (chessBot->isGameOver())
+        if (chessBot->isGameOver()) {
+          wifiManager.addLog("Game over (Chess Bot)");
+          wifiManager.setGameOver(true);
           showGameSelection();
-        else
+        } else
           chessBot->update();
       }
       break;
-    case MODE_LICHESS:
-      if (chessLichess != nullptr) {
-        if (chessLichess->isGameOver())
+    case MODE_ONLINE_PLAY:
+      if (chessConnect != nullptr) {
+        if (chessConnect->isGameOver()) {
+          wifiManager.addLog("Game over (Online Play)");
+          wifiManager.setGameOver(true);
+          cleanupCurrentGame();
           showGameSelection();
-        else
-          chessLichess->update();
+        } else
+          chessConnect->update();
       }
       break;
     case MODE_SENSOR_TEST:
@@ -242,22 +264,22 @@ void showGameSelection() {
   boardDriver.acquireLEDs();
   boardDriver.clearAllLEDs(false);
   // Light up the 4 selector positions in the middle of the board
-  // Position 1: Chess Moves (row 3, col 3) - Blue
-  boardDriver.setSquareLED(3, 3, LedColors::Blue);
-  // Position 2: Chess Bot (row 3, col 4) - Green
-  boardDriver.setSquareLED(3, 4, LedColors::Green);
-  // Position 3: Lichess (row 4, col 3) - Yellow
-  boardDriver.setSquareLED(4, 3, LedColors::Yellow);
-  // Position 4: Sensor Test (row 4, col 4) - Red
-  boardDriver.setSquareLED(4, 4, LedColors::Red);
+  // Position 1: Human vs Human
+  boardDriver.setSquareLED(3, 3, LedColors::ModeHuman);
+  // Position 2: Stockfish
+  boardDriver.setSquareLED(3, 4, LedColors::ModeStockfish);
+  // Position 3: Online Play
+  boardDriver.setSquareLED(4, 3, LedColors::ModeOnline);
+  // Position 4: Sensor Test
+  boardDriver.setSquareLED(4, 4, LedColors::ModeSensor);
   boardDriver.showLEDs();
   boardDriver.releaseLEDs();
   Serial.println("=============== Game Selection Mode ===============");
   Serial.println("Four LEDs are lit in the center of the board:");
-  Serial.println("  Blue:   Chess Moves (Human vs Human)");
-  Serial.println("  Green:  Chess Bot (Human vs AI)");
-  Serial.println("  Yellow: Lichess (Play online games)");
-  Serial.println("  Red:    Sensor Test");
+  Serial.println("  Cyan:    Chess Moves (Human vs Human)");
+  Serial.println("  Gold:    Chess Bot (Human vs AI)");
+  Serial.println("  Red:     Online Play (via ChessConnect)");
+  Serial.println("  Green:   Sensor Test");
   Serial.println("Place any chess piece on a LED to select that mode");
   Serial.println("===================================================");
 }
@@ -318,11 +340,10 @@ void handleGameSelection() {
           handleBotConfigSelection();
           break;
         case 2:
-          Serial.println("Mode: 'Lichess' Selected!");
-          currentMode = MODE_LICHESS;
+          Serial.println("Mode: 'Online Play' Selected!");
+          currentMode = MODE_ONLINE_PLAY;
           modeInitialized = false;
           boardDriver.clearAllLEDs();
-          lichessConfig = wifiManager.getLichessConfig();
           break;
         case 3:
           Serial.println("Mode: 'Sensor Test' Selected!");
@@ -345,28 +366,31 @@ void initializeSelectedMode(GameMode mode) {
     moveHistory.discardLiveGame(); // Discard any incomplete live game that wasn't properly finished or resumed (finishGame already removes live files for completed games)
   switch (mode) {
     case MODE_CHESS_MOVES:
-      Serial.println("Starting 'Chess Moves'...");
+      wifiManager.addLog("Starting Chess Moves");
       if (chessMoves != nullptr)
         delete chessMoves;
       chessMoves = new ChessMoves(&boardDriver, &chessEngine, &wifiManager, &moveHistory);
       chessMoves->begin();
       break;
     case MODE_BOT:
-      Serial.printf("Starting 'Chess Bot' (Depth: %d, Player is %s)...\n", botConfig.stockfishSettings.depth, botConfig.playerIsWhite ? "White" : "Black");
+      wifiManager.addLog("Starting Chess Bot (depth " + String(botConfig.stockfishSettings.depth) + ", " + (botConfig.playerIsWhite ? "White" : "Black") + ")");
       if (chessBot != nullptr)
         delete chessBot;
       chessBot = new ChessBot(&boardDriver, &chessEngine, &wifiManager, &moveHistory, botConfig);
       chessBot->begin();
       break;
-    case MODE_LICHESS:
-      Serial.println("Starting 'Lichess Mode'...");
-      if (chessLichess != nullptr)
-        delete chessLichess;
-      chessLichess = new ChessLichess(&boardDriver, &chessEngine, &wifiManager, lichessConfig);
-      chessLichess->begin();
+    case MODE_ONLINE_PLAY:
+      wifiManager.addLog("Starting Online Play");
+      if (chessConnect != nullptr)
+        delete chessConnect;
+      if (bleChessUp != nullptr)
+        delete bleChessUp;
+      bleChessUp = new BleChessUp();
+      chessConnect = new ChessConnect(&boardDriver, &chessEngine, &wifiManager, bleChessUp, &moveHistory);
+      chessConnect->begin();
       break;
     case MODE_SENSOR_TEST:
-      Serial.println("Starting 'Sensor Test'...");
+      wifiManager.addLog("Starting Sensor Test");
       if (sensorTest != nullptr)
         delete sensorTest;
       sensorTest = new SensorTest(&boardDriver);
@@ -376,6 +400,38 @@ void initializeSelectedMode(GameMode mode) {
       showGameSelection();
       break;
   }
+}
+
+void cleanupCurrentGame() {
+  // Save any in-progress game to history before cleanup
+  if (moveHistory.isRecording()) {
+    wifiManager.addLog("Saving in-progress game to history");
+    moveHistory.finishGame(RESULT_IN_PROGRESS, 'd');
+  }
+
+  // Clean up all game mode objects safely
+  if (bleChessUp) {
+    bleChessUp->stop();
+    delete bleChessUp;
+    bleChessUp = nullptr;
+  }
+  if (chessConnect) {
+    delete chessConnect;
+    chessConnect = nullptr;
+  }
+  if (chessBot) {
+    delete chessBot;
+    chessBot = nullptr;
+  }
+  if (chessMoves) {
+    delete chessMoves;
+    chessMoves = nullptr;
+  }
+  if (sensorTest) {
+    delete sensorTest;
+    sensorTest = nullptr;
+  }
+  wifiManager.setBleConnected(false);
 }
 
 void handleBotConfigSelection() {
@@ -418,6 +474,16 @@ void handleBotConfigSelection() {
 
   while (true) {
     boardDriver.readSensors();
+
+    // Check for home request from web UI (cancel bot config selection)
+    if (wifiManager.getPendingHome()) {
+      boardDriver.clearAllLEDs();
+      currentMode = MODE_SELECTION;
+      modeInitialized = true;
+      showGameSelection();
+      wifiManager.clearPendingHome();
+      return;
+    }
 
     for (int rowIdx = 0; rowIdx < 2; ++rowIdx) {
       int row = (rowIdx == 0) ? 2 : 5;

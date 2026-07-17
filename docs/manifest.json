@@ -1,5 +1,5 @@
 {
-    "name": "OpenChess",
+    "name": "SeleniumChess",
     "new_install_prompt_erase": true,
     "builds": [
         {

@@ -34,7 +34,8 @@ def is_nogz(filename: str) -> bool:
     return ".nogz." in filename
 
 
-def prepare():
+def prepare_from(source_dir):
+    """Gzip-compress web assets from source_dir into data/."""
     # Clean and recreate data directory
     if DATA_DIR.exists():
         shutil.rmtree(DATA_DIR)
@@ -42,16 +43,23 @@ def prepare():
 
     count = 0
 
-    for f in sorted(BUILD_DIR.rglob("*")):
+    for f in sorted(source_dir.rglob("*")):
         if not f.is_file():
             continue
+
+        # Skip the build directory itself
+        try:
+            f.relative_to(BUILD_DIR)
+            continue
+        except ValueError:
+            pass
 
         ext = f.suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:
             continue
 
-        # Get path relative to build dir and clean .nogz. from name
-        rel = f.relative_to(BUILD_DIR)
+        # Get path relative to source dir and clean .nogz. from name
+        rel = f.relative_to(source_dir)
         clean_name = str(rel).replace("\\", "/").replace(".nogz", "")
 
         if is_nogz(f.name):
@@ -74,14 +82,15 @@ def prepare():
 
         count += 1
 
-    # Clean up minified files and copied directories from build/
-    for entry in sorted(BUILD_DIR.iterdir(), reverse=True):
-        if entry.name.startswith(".") or entry.suffix == ".py":
-            continue  # keep .gitignore and build scripts
-        if entry.is_dir():
-            shutil.rmtree(entry)
-        elif entry.is_file():
-            entry.unlink()
+    # Clean up minified files and copied directories from build/ (only when processing build dir)
+    if source_dir == BUILD_DIR:
+        for entry in sorted(BUILD_DIR.iterdir(), reverse=True):
+            if entry.name.startswith(".") or entry.suffix == ".py":
+                continue  # keep .gitignore and build scripts
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            elif entry.is_file():
+                entry.unlink()
 
     print(f"LittleFS: Prepared {count} web assets in data/")
 
@@ -92,15 +101,14 @@ has_files = BUILD_DIR.exists() and any(
     for f in BUILD_DIR.rglob("*")
 )
 
-if not has_files:
-    if DATA_DIR.exists() and any(DATA_DIR.rglob("*")):
-        print(
-            "No minified files in src/web/build/ - using existing data/ directory."
-        )
-    else:
-        print(
-            "No files found in data/ - LittleFS image will be empty.",
-            file=sys.stderr,
-        )
+if has_files:
+    prepare_from(BUILD_DIR)
+elif DATA_DIR.exists() and any(DATA_DIR.rglob("*")):
+    print(
+        "No minified files in src/web/build/ - using existing data/ directory."
+    )
 else:
-    prepare()
+    # Fallback: compress raw source files from src/web/ directly
+    print("No minified files found - compressing raw source files from src/web/")
+    SRC_DIR = Path("src/web")
+    prepare_from(SRC_DIR)

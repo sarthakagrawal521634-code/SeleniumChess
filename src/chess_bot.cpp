@@ -13,6 +13,7 @@ void ChessBot::begin() {
   Serial.printf("Player plays: %s\n", botConfig.playerIsWhite ? "White" : "Black");
   Serial.printf("Bot plays: %s\n", botConfig.playerIsWhite ? "Black" : "White");
   Serial.printf("Bot Difficulty: Depth %d, Timeout %dms\n", botConfig.stockfishSettings.depth, botConfig.stockfishSettings.timeoutMs);
+  Serial.printf("Engine source: %s\n", botConfig.engineSource == BotEngineSource::LocalEngine ? "Local (fallback active)" : "Remote Stockfish API");
   Serial.println("====================================");
   if (wifiManager->ensureConnected()) {
     initializeBoard();
@@ -27,6 +28,14 @@ void ChessBot::begin() {
       moveHistory->addFen(ChessUtils::boardToFEN(board, currentTurn, chessEngine));
     }
     waitForBoardSetup(board);
+    const char* levels[] = {"Easy","Medium","Hard","Expert"};
+    const int depths[] = {5, 8, 11, 15};
+    String levelName = "Stockfish";
+    for (int i = 0; i < 4; i++) { if (botConfig.stockfishSettings.depth == depths[i]) { levelName = String(levels[i]); break; } }
+    if (botConfig.playerIsWhite)
+      wifiManager->setPlayerNames("User", "Stockfish (" + levelName + ")");
+    else
+      wifiManager->setPlayerNames("Stockfish (" + levelName + ")", "User");
   } else {
     Serial.println("Failed to connect to WiFi. Bot mode unavailable.");
     boardDriver->flashBoardAnimation(LedColors::Red);
@@ -60,6 +69,7 @@ void ChessBot::update() {
     wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), currentEvaluation);
   }
 
+  waitForBoardConsistency();
   boardDriver->updateSensorPrev();
 }
 
@@ -127,6 +137,9 @@ bool ChessBot::parseStockfishResponse(const String& response, String& bestMove, 
 
 void ChessBot::makeBotMove() {
   Serial.println("=== BOT MOVE CALCULATION ===");
+  if (botConfig.engineSource == BotEngineSource::LocalEngine)
+    Serial.println("Local engine requested but not integrated yet. Using remote Stockfish API fallback.");
+  boardDriver->configureThinkingAnimation(ChessUtils::colorLed(currentTurn), currentTurn == 'b');
   std::atomic<bool>* stopAnimation = boardDriver->startThinkingAnimation();
   String bestMove;
   String response = makeStockfishRequest(ChessUtils::boardToFEN(board, currentTurn, chessEngine));
@@ -173,14 +186,47 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
     boardDriver->setSquareLED(enPassantCapturedPawnRow, toCol, LedColors::Purple);
   boardDriver->showLEDs();
 
+  // Build set of squares involved in this move (don't flag these as discrepancies)
+  bool moveSquares[8][8] = {};
+  moveSquares[fromRow][fromCol] = true;
+  moveSquares[toRow][toCol] = true;
+  if (isEnPassant)
+    moveSquares[enPassantCapturedPawnRow][toCol] = true;
+
   bool piecePickedUp = false;
   bool capturedPieceRemoved = false;
   bool moveCompleted = false;
+  bool hadDiscrepancy = false;
 
   Serial.println("Waiting for you to complete the remote move...");
 
   while (!moveCompleted) {
     boardDriver->readSensors();
+
+    // Check for home request from web UI
+    if (wifiManager->getPendingHome()) {
+      boardDriver->clearAllLEDs();
+      boardDriver->releaseLEDs();
+      gameOver = true;
+      return;
+    }
+
+    // Check for web resign/draw while waiting
+    char resignColor;
+    if (wifiManager->getPendingResign(resignColor)) {
+      wifiManager->clearPendingResign();
+      boardDriver->clearAllLEDs();
+      boardDriver->releaseLEDs();
+      resignGame(resignColor);
+      return;
+    }
+    if (wifiManager->getPendingDraw()) {
+      wifiManager->clearPendingDraw();
+      boardDriver->clearAllLEDs();
+      boardDriver->releaseLEDs();
+      drawGame();
+      return;
+    }
 
     // For capture moves, ensure captured piece is removed first
     // For en passant, check the actual captured pawn square (not the destination)
@@ -209,6 +255,26 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
         moveCompleted = true;
         Serial.println("Move completed on physical board!");
       }
+
+    // Monitor for knocked-off pieces (show red for discrepancies on non-move squares)
+    if (!moveCompleted) {
+      bool discrepancyFound = false;
+      for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+          if (moveSquares[r][c]) continue;
+          bool sensorOn = boardDriver->getSensorState(r, c);
+          bool shouldHavePiece = (board[r][c] != ' ');
+          if (shouldHavePiece != sensorOn) {
+            boardDriver->setSquareLED(r, c, LedColors::Red);
+            discrepancyFound = true;
+          } else {
+            boardDriver->setSquareLED(r, c, LedColors::Off);
+          }
+        }
+      }
+      if (discrepancyFound || hadDiscrepancy) boardDriver->showLEDs();
+      hadDiscrepancy = discrepancyFound;
+    }
 
     delay(SENSOR_READ_DELAY_MS);
     boardDriver->updateSensorPrev();

@@ -1,4 +1,4 @@
-# OpenChess - Copilot Instructions
+# SeleniumChess - Copilot Instructions
 
 ## Project Overview
 ESP32 Arduino smart chessboard: detects piece movements via hall-effect sensors + shift register, provides LED feedback via WS2812B strip, and communicates with Stockfish API / Lichess API over WiFi. Built with PlatformIO (`esp32dev` board, Arduino framework).
@@ -69,7 +69,7 @@ Fixed meanings: `Cyan`=piece origin, `White`=valid move, `Red`=capture/error, `P
 - **`quietExists()`**: Uses POSIX `stat()` with `"/littlefs"` prefix instead of `LittleFS.exists()` to avoid noisy VFS log output.
 
 ### Web UI & REST API
-Three pages in `src/web/`: `index.html` (settings), `game.html` (mode selection), `board.html` (live board with chessboard.js/chess.js). Communication via `fetch()` polling `/board-update` for FEN. Key endpoints:
+Two pages in `src/web/`: `index.html` (single-page app with Home, Network, Board, and Settings tabs — board tab includes live board with chessboard.js/chess.js), `game.html` (standalone mode selection). Communication via `fetch()` polling `/board-update` for FEN. Key endpoints:
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -97,7 +97,7 @@ Namespaces: `"wifiCreds"` (ssid, pass), `"lichess"` (token), `"ota"` (autoUpdate
 - **Lichess**: HTTPS to `lichess.org:443`, polling-based (`POLL_INTERVAL_MS=500`). Token in NVS. Move retries: 3 attempts with 500ms delay.
 
 ### Error Handling
-`Serial.println` for diagnostics. No exceptions. WiFi failures → AP fallback (`SSID "OpenChess"`, password `"chess123"`). OTA failures → flash red LEDs. Version `"dev"` always considers remote updates as newer.
+`Serial.println` for diagnostics. No exceptions. WiFi failures → AP fallback (`SSID "SeleniumChess"`, password `"chess123"`). OTA failures → flash red LEDs. Version `"dev"` always considers remote updates as newer.
 
 ### Pin Configuration
 GPIO pins defined in `board_driver.h` with defaults, runtime-configurable via `HardwareConfig` struct persisted in NVS (editable from web UI). Calibration maps physical pin order to logical coordinates — **pin assignment order doesn't matter**.

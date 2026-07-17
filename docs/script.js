@@ -1,5 +1,5 @@
 /* ============================================
-   OpenChess Build Guide — JSON-driven Builder + Interactivity
+   SeleniumChess Build Guide — JSON-driven Builder + Interactivity
    ============================================ */
 
 (async function () {
@@ -77,7 +77,7 @@
         );
 
         const imgDiv = el('div', { className: 'hero-image' });
-        imgDiv.append(el('img', { src: IMG + hero.image, alt: 'OpenChess demo' }));
+        imgDiv.append(el('img', { src: IMG + hero.image, alt: 'SeleniumChess demo' }));
 
         section.append(textDiv, imgDiv);
         contentEl.append(section);
@@ -184,7 +184,7 @@
     // ---------- Build: Footer ----------
     function buildFooter() {
         const footer = el('footer');
-        footer.append(el('p', { innerHTML: 'OpenChess Build Guide — <a href="' + GITHUB + '" target="_blank">View on GitHub</a>' }));
+        footer.append(el('p', { innerHTML: 'SeleniumChess Build Guide — <a href="' + GITHUB + '" target="_blank">View on GitHub</a>' }));
         contentEl.append(footer);
     }
 

@@ -11,8 +11,8 @@ MoveHistory::MoveHistory() : recording(false) {
 }
 
 void MoveHistory::begin() {
-  if (!quietExists(GAMES_DIR))
-    LittleFS.mkdir(GAMES_DIR);
+  // Directory is created on-demand in startGame() to avoid a
+  // LittleFS lfs_alloc crash (block_count=0) on fresh filesystems.
 }
 
 uint32_t MoveHistory::getTimestamp() {
@@ -89,13 +89,16 @@ std::vector<int> MoveHistory::listGameIds() {
 
   File f = dir.openNextFile();
   while (f) {
-    String name = f.name();
+    String fullName = f.name();
+    int slash = fullName.lastIndexOf('/');
+    String name = (slash >= 0) ? fullName.substring(slash + 1) : fullName;
     // Match "game_NN.bin"
     if (name.startsWith("game_") && name.endsWith(".bin")) {
       int id = name.substring(5, name.length() - 4).toInt();
       if (id > 0)
         ids.push_back(id);
     }
+    f.close();
     f = dir.openNextFile();
   }
   std::sort(ids.begin(), ids.end());
@@ -134,6 +137,12 @@ void MoveHistory::enforceStorageLimits() {
 void MoveHistory::startGame(uint8_t mode, uint8_t playerColor, uint8_t botDepth) {
   discardLiveGame();
 
+  if (!quietExists(GAMES_DIR) && !LittleFS.mkdir(GAMES_DIR) && !quietExists(GAMES_DIR)) {
+    Serial.println("ERROR: MoveHistory could not create /games directory");
+    recording = false;
+    return;
+  }
+
   memset(&header, 0, sizeof(header));
   header.version = FORMAT_VERSION;
   header.mode = mode;
@@ -144,15 +153,26 @@ void MoveHistory::startGame(uint8_t mode, uint8_t playerColor, uint8_t botDepth)
   header.timestamp = getTimestamp();
 
   // Write initial header to live.bin
+  bool liveMovesReady = false;
   File f = LittleFS.open(LIVE_MOVES_PATH, "w");
   if (f) {
-    f.write((const uint8_t*)&header, sizeof(header));
+    liveMovesReady = (f.write((const uint8_t*)&header, sizeof(header)) == sizeof(header));
     f.close();
   }
 
   // Create empty FEN table file
+  bool liveFenReady = false;
   File ft = LittleFS.open(LIVE_FEN_PATH, "w");
-  if (ft) ft.close();
+  if (ft) {
+    liveFenReady = true;
+    ft.close();
+  }
+
+  if (!liveMovesReady || !liveFenReady) {
+    Serial.println("ERROR: MoveHistory failed to create live game files");
+    discardLiveGame();
+    return;
+  }
 
   recording = true;
   Serial.println("MoveHistory: new live game started");
@@ -207,7 +227,18 @@ void MoveHistory::updateLiveHeader() {
 }
 
 void MoveHistory::finishGame(uint8_t result, char winnerColor) {
+  if (!quietExists(LIVE_MOVES_PATH)) {
+    recording = false;
+    Serial.println("MoveHistory: no live game to finish");
+    return;
+  }
+
   recording = false;
+
+  if (!quietExists(GAMES_DIR) && !LittleFS.mkdir(GAMES_DIR) && !quietExists(GAMES_DIR)) {
+    Serial.println("ERROR: MoveHistory could not create /games directory before saving");
+    return;
+  }
 
   // Update header fields
   header.result = result;
@@ -244,8 +275,12 @@ void MoveHistory::finishGame(uint8_t result, char winnerColor) {
   // Rename to completed game file
   int id = nextGameId();
   String dest = gamePath(id);
-  LittleFS.rename(LIVE_MOVES_PATH, dest.c_str());
-  discardLiveGame();
+  if (!LittleFS.rename(LIVE_MOVES_PATH, dest.c_str())) {
+    Serial.printf("ERROR: MoveHistory failed to save game as %s (live game preserved)\n", dest.c_str());
+    return;
+  }
+
+  if (quietExists(LIVE_FEN_PATH)) LittleFS.remove(LIVE_FEN_PATH);
 
   Serial.printf("MoveHistory: game saved as %s (%d moves) (%d FEN entries)\n", dest.c_str(), header.moveCount, header.fenEntryCnt);
 }
@@ -379,6 +414,17 @@ String MoveHistory::getGameListJSON() {
   auto ids = listGameIds();
   JsonDocument doc;
   JsonArray arr = doc["games"].to<JsonArray>();
+  auto appendGame = [&](JsonObject obj, const GameHeader& hdr, int recordedMoveCount) {
+    obj["mode"] = hdr.mode;
+    obj["result"] = hdr.result;
+    obj["winner"] = String((char)hdr.winnerColor);
+    obj["playerColor"] = hdr.playerColor ? String((char)hdr.playerColor) : String("?");
+    obj["botDepth"] = hdr.botDepth;
+    obj["timeMinutes"] = (hdr.mode == GAME_MODE_CHESS_MOVES) ? (int)hdr.playerColor : 0;
+    obj["timeIncrement"] = (hdr.mode == GAME_MODE_CHESS_MOVES) ? (int)hdr.botDepth : 0;
+    obj["moveCount"] = recordedMoveCount;
+    obj["timestamp"] = hdr.timestamp;
+  };
 
   for (int id : ids) {
     File f = LittleFS.open(gamePath(id), "r");
@@ -386,17 +432,43 @@ String MoveHistory::getGameListJSON() {
 
     GameHeader hdr;
     f.read((uint8_t*)&hdr, sizeof(hdr));
+
+    int recordedMoveCount = 0;
+    for (uint16_t i = 0; i < hdr.moveCount && f.available() >= 2; i++) {
+      uint16_t encoded = 0;
+      if (f.read((uint8_t*)&encoded, 2) != 2)
+        break;
+      if (encoded != FEN_MARKER)
+        recordedMoveCount++;
+    }
     f.close();
 
     JsonObject obj = arr.add<JsonObject>();
     obj["id"] = id;
-    obj["mode"] = hdr.mode;
-    obj["result"] = hdr.result;
-    obj["winner"] = String((char)hdr.winnerColor);
-    obj["playerColor"] = hdr.playerColor ? String((char)hdr.playerColor) : String("?");
-    obj["botDepth"] = hdr.botDepth;
-    obj["moveCount"] = hdr.moveCount;
-    obj["timestamp"] = hdr.timestamp;
+    appendGame(obj, hdr, recordedMoveCount);
+  }
+
+  if (quietExists(LIVE_MOVES_PATH)) {
+    File f = LittleFS.open(LIVE_MOVES_PATH, "r");
+    if (f && f.size() >= sizeof(GameHeader)) {
+      GameHeader hdr;
+      f.read((uint8_t*)&hdr, sizeof(hdr));
+
+      int recordedMoveCount = 0;
+      for (uint16_t i = 0; i < hdr.moveCount && f.available() >= 2; i++) {
+        uint16_t encoded = 0;
+        if (f.read((uint8_t*)&encoded, 2) != 2)
+          break;
+        if (encoded != FEN_MARKER)
+          recordedMoveCount++;
+      }
+      f.close();
+
+      JsonObject obj = arr.add<JsonObject>();
+      obj["id"] = "live";
+      obj["live"] = true;
+      appendGame(obj, hdr, recordedMoveCount);
+    }
   }
 
   String out;
