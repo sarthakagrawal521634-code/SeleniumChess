@@ -113,12 +113,8 @@ jobs:
             - **Firmware**: Updated via `firmware.bin`
             - **Web UI**: Updated via `web_assets.tar` (preserves saved games on LittleFS)
 
-  # Deploy GitHub Pages with the new release firmware so the Web Installer can fetch
-  # binaries from the same origin (GitHub Pages has CORS headers, GitHub Releases does not).
-  deploy-pages:
-    needs: build
-    uses: ./.github/workflows/pages.yml
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
+  # GitHub Pages deployment is optional. The release artifacts are still published
+  # to the GitHub Release itself, which is enough for OTA downloads.
+  # If you want the browser installer on GitHub Pages, enable Pages in repo settings
+  # and then re-enable this job.
+
