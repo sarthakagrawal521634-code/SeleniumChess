@@ -7,6 +7,6 @@
 #define FIRMWARE_VERSION "dev"
 
 // GitHub repository for OTA update checks
-#define OTA_GITHUB_API_URL "https://api.github.com/repos/joojoooo/SeleniumChess/releases/latest"
+#define OTA_GITHUB_API_URL "https://api.github.com/repos/sarthakagrawal521634-code/SeleniumChess/releases/latest"
 
 #endif // VERSION_H
